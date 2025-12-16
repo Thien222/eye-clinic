@@ -197,6 +197,31 @@ export const Settings: React.FC = () => {
     }
   };
 
+  // Khôi phục từ file backup đã lưu trên server
+  const handleRestoreFromBackup = async (record: BackupRecord) => {
+    if (!confirm(`Khôi phục dữ liệu từ backup "${record.filename}"?\n\n⚠️ Dữ liệu hiện tại sẽ bị GHI ĐÈ!`)) return;
+
+    try {
+      const response = await fetch(`/api/backup/restore?path=${encodeURIComponent(record.path)}`);
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        // Import data từ server
+        const dataString = JSON.stringify(result.data);
+        if (db.importData(dataString)) {
+          alert(`✅ Khôi phục dữ liệu thành công từ:\n${record.filename}\n\nTrang sẽ tải lại.`);
+          window.location.reload();
+        } else {
+          alert('❌ Dữ liệu backup không hợp lệ!');
+        }
+      } else {
+        throw new Error(result.message || 'Không thể đọc file backup');
+      }
+    } catch (error: any) {
+      alert(`❌ Lỗi khôi phục: ${error.message}\n\nHãy thử chọn file thủ công bằng nút "Khôi phục dữ liệu" ở trên.`);
+    }
+  };
+
 
   const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -557,7 +582,16 @@ export const Settings: React.FC = () => {
                       <div className="font-mono text-sm font-medium">{record.filename}</div>
                       <div className="text-xs text-gray-500">{new Date(record.date).toLocaleString('vi-VN')}</div>
                     </div>
-                    <button onClick={() => handleDeleteBackup(record)} className="text-red-500"><Trash2 size={16} /></button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleRestoreFromBackup(record)}
+                        className="text-green-600 hover:bg-green-50 px-2 py-1 rounded flex items-center gap-1 text-sm font-medium"
+                        title="Khôi phục từ backup này"
+                      >
+                        <Upload size={14} /> Khôi phục
+                      </button>
+                      <button onClick={() => handleDeleteBackup(record)} className="text-red-500 hover:bg-red-50 p-1 rounded" title="Xóa backup"><Trash2 size={16} /></button>
+                    </div>
                   </div>
                 ))}
                 {backupHistory.length === 0 && <p className="text-center text-gray-500 py-4">Chưa có bản sao lưu nào.</p>}

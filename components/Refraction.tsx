@@ -5,6 +5,64 @@ import { Mic, Save, Printer, Search, UserCheck, Clock, CheckCircle } from 'lucid
 
 const EMPTY_METRIC = { sph: '', cyl: '', axis: '', va: '', add: '' };
 
+// ===== MOVED OUTSIDE to prevent re-creation on each render =====
+// Component hiển thị input cho Skiascopy (không có VA)
+const SkiascopyInput = ({ label, value, onChange }: { label: string, value: any, onChange: (val: any) => void }) => (
+  <div className="grid grid-cols-4 gap-2 mb-2">
+    <div className="font-bold text-gray-500 self-center text-sm">{label}</div>
+    <input
+      placeholder="SPH"
+      className="border p-1.5 rounded text-sm text-center"
+      value={value.sph || ''}
+      onChange={e => onChange({ ...value, sph: e.target.value })}
+    />
+    <input
+      placeholder="CYL"
+      className="border p-1.5 rounded text-sm text-center"
+      value={value.cyl || ''}
+      onChange={e => onChange({ ...value, cyl: e.target.value })}
+    />
+    <input
+      placeholder="AXIS"
+      className="border p-1.5 rounded text-sm text-center"
+      value={value.axis || ''}
+      onChange={e => onChange({ ...value, axis: e.target.value })}
+    />
+  </div>
+);
+
+// Component hiển thị input cho Subjective (có VA)
+const SubjectiveInput = ({ label, value, onChange }: { label: string, value: any, onChange: (val: any) => void }) => (
+  <div className="grid grid-cols-5 gap-2 mb-2">
+    <div className="font-bold text-gray-500 self-center text-sm">{label}</div>
+    <input
+      placeholder="SPH"
+      className="border p-1.5 rounded text-sm text-center"
+      value={value.sph || ''}
+      onChange={e => onChange({ ...value, sph: e.target.value })}
+    />
+    <input
+      placeholder="CYL"
+      className="border p-1.5 rounded text-sm text-center"
+      value={value.cyl || ''}
+      onChange={e => onChange({ ...value, cyl: e.target.value })}
+    />
+    <input
+      placeholder="AXIS"
+      className="border p-1.5 rounded text-sm text-center"
+      value={value.axis || ''}
+      onChange={e => onChange({ ...value, axis: e.target.value })}
+    />
+    <input
+      placeholder="VA"
+      className="border p-1.5 rounded text-sm text-center"
+      value={value.va || ''}
+      onChange={e => onChange({ ...value, va: e.target.value })}
+    />
+  </div>
+);
+// ===== END MOVED COMPONENTS =====
+
 export const Refraction: React.FC = () => {
   // Initialize state from localStorage or default to 'waiting'
   const [activeTab, setActiveTab] = useState<'waiting' | 'processing' | 'completed'>(() => {
@@ -121,30 +179,31 @@ export const Refraction: React.FC = () => {
     setActiveTab('waiting'); // Return to waiting list
   };
 
+  const handleTransferToDoctor = () => {
+    if (!selectedPatient) return;
+
+    // Update PD trong finalRx
+    const finalRxWithPd = {
+      ...data.finalRx,
+      od: { ...data.finalRx.od, pd },
+      os: { ...data.finalRx.os, pd }
+    };
+
+    const updated = {
+      ...selectedPatient,
+      refraction: { ...data, finalRx: finalRxWithPd },
+      status: 'waiting_doctor' as const // Chuyển sang phòng khám
+    };
+    db.updatePatient(updated);
+    alert('Đã lưu kết quả khúc xạ! Chuyển sang phòng khám mắt.');
+    setSelectedPatient(null);
+    loadPatients();
+    setActiveTab('waiting'); // Return to waiting list
+  };
+
   const handlePrint = () => {
     window.print();
   };
-
-  // Component hiển thị input cho Skiascopy (không có VA)
-  const SkiascopyInput = ({ label, value, onChange }: { label: string, value: any, onChange: (val: any) => void }) => (
-    <div className="grid grid-cols-4 gap-2 mb-2">
-      <div className="font-bold text-gray-500 self-center text-sm">{label}</div>
-      <input placeholder="SPH" className="border p-1.5 rounded text-sm text-center" value={value.sph} onChange={e => onChange({ ...value, sph: e.target.value })} />
-      <input placeholder="CYL" className="border p-1.5 rounded text-sm text-center" value={value.cyl} onChange={e => onChange({ ...value, cyl: e.target.value })} />
-      <input placeholder="AXIS" className="border p-1.5 rounded text-sm text-center" value={value.axis} onChange={e => onChange({ ...value, axis: e.target.value })} />
-    </div>
-  );
-
-  // Component hiển thị input cho Subjective (có VA)
-  const SubjectiveInput = ({ label, value, onChange }: { label: string, value: any, onChange: (val: any) => void }) => (
-    <div className="grid grid-cols-5 gap-2 mb-2">
-      <div className="font-bold text-gray-500 self-center text-sm">{label}</div>
-      <input placeholder="SPH" className="border p-1.5 rounded text-sm text-center" value={value.sph} onChange={e => onChange({ ...value, sph: e.target.value })} />
-      <input placeholder="CYL" className="border p-1.5 rounded text-sm text-center" value={value.cyl} onChange={e => onChange({ ...value, cyl: e.target.value })} />
-      <input placeholder="AXIS" className="border p-1.5 rounded text-sm text-center" value={value.axis} onChange={e => onChange({ ...value, axis: e.target.value })} />
-      <input placeholder="VA" className="border p-1.5 rounded text-sm text-center" value={value.va} onChange={e => onChange({ ...value, va: e.target.value })} />
-    </div>
-  );
 
   const settings = db.getSettings();
   const today = new Date();
@@ -270,9 +329,14 @@ export const Refraction: React.FC = () => {
                 <Printer size={18} /> In Phiếu Khúc Xạ
               </button>
               {activeTab !== 'completed' && (
-                <button onClick={handleSave} className="px-4 py-2 bg-brand-600 text-white rounded hover:bg-brand-700 flex items-center gap-2">
-                  <Save size={18} /> Lưu & Chuyển Hóa Đơn
-                </button>
+                <>
+                  <button onClick={handleSave} className="px-4 py-2 bg-brand-600 text-white rounded hover:bg-brand-700 flex items-center gap-2">
+                    <Save size={18} /> Lưu & Chuyển Hóa Đơn
+                  </button>
+                  <button onClick={handleTransferToDoctor} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2">
+                    <UserCheck size={18} /> Chuyển Khám Mắt
+                  </button>
+                </>
               )}
             </div>
 
@@ -326,21 +390,22 @@ export const Refraction: React.FC = () => {
                   <div>SPH</div><div>CYL</div><div>AXIS</div><div>Thị lực</div><div>ADD</div>
                 </div>
 
+
                 <div className="grid grid-cols-6 gap-2 mb-2">
                   <div className="font-bold text-gray-600 self-center text-sm">OD</div>
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.sph} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, sph: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.cyl} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, cyl: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.axis} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, axis: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.va} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, va: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" placeholder="ADD" value={data.finalRx.od.add} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, add: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.sph || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, sph: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.cyl || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, cyl: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.axis || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, axis: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.od.va || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, va: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" placeholder="ADD" value={data.finalRx.od.add || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, od: { ...data.finalRx.od, add: e.target.value } } })} />
                 </div>
                 <div className="grid grid-cols-6 gap-2 mb-4">
                   <div className="font-bold text-gray-600 self-center text-sm">OS</div>
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.sph} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, sph: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.cyl} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, cyl: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.axis} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, axis: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.va} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, va: e.target.value } } })} />
-                  <input className="border p-1.5 rounded text-center text-sm" placeholder="ADD" value={data.finalRx.os.add} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, add: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.sph || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, sph: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.cyl || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, cyl: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.axis || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, axis: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" value={data.finalRx.os.va || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, va: e.target.value } } })} />
+                  <input className="border p-1.5 rounded text-center text-sm" placeholder="ADD" value={data.finalRx.os.add || ''} onChange={e => setData({ ...data, finalRx: { ...data.finalRx, os: { ...data.finalRx.os, add: e.target.value } } })} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -429,18 +494,21 @@ export const Refraction: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '3mm', fontSize: '11px' }}>
                   <tbody>
                     <tr>
-                      <td style={{ border: '1px solid black', padding: '2px 4px', width: '40%' }}>
+                      <td style={{ border: '1px solid black', padding: '2px 4px', width: '35%' }}>
                         <b>Thị lực không kính/kính cũ</b> (Nếu có)<br />
                         <i style={{ fontSize: '10px' }}>(UCVA/ with old glasses)</i>
                       </td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center', width: '20%' }}>
-                        <b>Mắt phải</b> <i>(OD)</i><br />{selectedPatient.initialVA?.od || ''}
+                      <td style={{ border: '1px solid black', padding: '4px', textAlign: 'center', width: '22%' }}>
+                        <b>Mắt phải</b> <i>(OD)</i><br />
+                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{selectedPatient.initialVA?.od || ''}</span>
                       </td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center', width: '20%' }}>
-                        <b>Mắt trái</b> <i>(OS)</i><br />{selectedPatient.initialVA?.os || ''}
+                      <td style={{ border: '1px solid black', padding: '4px', textAlign: 'center', width: '22%' }}>
+                        <b>Mắt trái</b> <i>(OS)</i><br />
+                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{selectedPatient.initialVA?.os || ''}</span>
                       </td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center', width: '20%' }}>
-                        <b>KCĐT</b><br /><i>(PD)</i><br />{pd}
+                      <td style={{ border: '1px solid black', padding: '4px', textAlign: 'center', width: '21%' }}>
+                        <b>KCĐT</b> <i>(PD)</i><br />
+                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{pd}</span>
                       </td>
                     </tr>
                   </tbody>
@@ -450,8 +518,8 @@ export const Refraction: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '3mm', fontSize: '11px' }}>
                   <thead>
                     <tr>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '22%' }}></th>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '13%' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
+                      <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
+                      <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cầu/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(AXIS)</i></th>
@@ -464,35 +532,35 @@ export const Refraction: React.FC = () => {
                         <b>Khúc xạ khách quan</b><br /><i style={{ fontSize: '10px' }}>(Skiascopy)</i>
                         {data.skiascopy.cycloplegia && <><br /><span style={{ color: 'red', fontSize: '9px' }}>- Có liệt điều tiết -</span></>}
                       </td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>Mắt phải <i>(OD)</i></td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.skiascopy.od.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.skiascopy.od.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.skiascopy.od.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt phải <i>(OD)</i></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.sph}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.cyl}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.axis}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center' }}></td>
                     </tr>
                     <tr>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>Mắt trái <i>(OS)</i></td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.skiascopy.os.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.skiascopy.os.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.skiascopy.os.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt trái <i>(OS)</i></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.sph}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.cyl}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.axis}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center' }}></td>
                     </tr>
                     <tr>
                       <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px' }}>
                         <b>Khúc xạ chủ quan</b><br /><i style={{ fontSize: '10px' }}>(Subj. refraction)</i>
                       </td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>Mắt phải <i>(OD)</i></td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.od.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.od.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.od.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.od.va}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt phải <i>(OD)</i></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.sph}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.cyl}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.axis}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.va}</td>
                     </tr>
                     <tr>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>Mắt trái <i>(OS)</i></td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.os.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.os.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.os.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.subjective.os.va}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt trái <i>(OS)</i></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.sph}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.cyl}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.axis}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.va}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -501,8 +569,8 @@ export const Refraction: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '3mm', fontSize: '11px' }}>
                   <thead>
                     <tr>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '22%' }}></th>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '13%' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
+                      <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
+                      <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cầu/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b></th>
@@ -515,20 +583,20 @@ export const Refraction: React.FC = () => {
                       <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px' }}>
                         <b>Kính điều chỉnh</b><br /><i style={{ fontSize: '10px' }}>(Prescription)</i>
                       </td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>Mắt phải <i>(OD)</i></td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.od.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.od.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.od.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.od.va}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.od.add}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt phải <i>(OD)</i></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.sph}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.cyl}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.axis}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.va}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.add}</td>
                     </tr>
                     <tr>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>Mắt trái <i>(OS)</i></td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.os.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.os.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.os.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.os.va}</td>
-                      <td style={{ border: '1px solid black', padding: '2px', textAlign: 'center' }}>{data.finalRx.os.add}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt trái <i>(OS)</i></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.sph}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.cyl}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.axis}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.va}</td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.add}</td>
                     </tr>
                   </tbody>
                 </table>

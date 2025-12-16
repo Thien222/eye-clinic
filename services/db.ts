@@ -111,6 +111,11 @@ class DatabaseService {
       if (data.inventory) localStorage.setItem(this.inventoryKey, JSON.stringify(data.inventory));
       if (data.invoices) localStorage.setItem(this.invoicesKey, JSON.stringify(data.invoices));
       if (data.settings) localStorage.setItem(this.settingsKey, JSON.stringify(data.settings));
+
+      // QUAN TRỌNG: Push ngay lên server sau khi restore để tránh bị sync ngược
+      this.pushToServer();
+      console.log('[DB] Imported data and pushed to server');
+
       return true;
     } catch (e) {
       console.error(e);

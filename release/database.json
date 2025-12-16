@@ -15,8 +15,158 @@
         "od": "",
         "os": ""
       },
-      "status": "processing_refraction",
-      "timestamp": 1765217772295
+      "status": "completed",
+      "timestamp": 1765217772295,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "",
+            "cyl": "",
+            "axis": "",
+            "va": "",
+            "add": ""
+          },
+          "os": {
+            "sph": "",
+            "cyl": "",
+            "axis": "",
+            "va": "",
+            "add": ""
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "",
+            "cyl": "",
+            "axis": "",
+            "va": "",
+            "add": ""
+          },
+          "os": {
+            "sph": "",
+            "cyl": "",
+            "axis": "",
+            "va": "",
+            "add": ""
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "",
+            "cyl": "",
+            "axis": "",
+            "va": "",
+            "add": "",
+            "pd": ""
+          },
+          "os": {
+            "sph": "",
+            "cyl": "",
+            "axis": "",
+            "va": "",
+            "add": "",
+            "pd": ""
+          },
+          "lensType": "Đơn tròng - nhìn xa",
+          "distance": true,
+          "near": false
+        },
+        "note": ""
+      }
+    },
+    {
+      "id": "id-mj031y26-nqkpzsees",
+      "ticketNumber": 101,
+      "fullName": "l",
+      "dob": 2000,
+      "phone": "",
+      "address": "",
+      "gender": "Nam",
+      "reason": "Khám mắt",
+      "hasGlasses": false,
+      "notes": "",
+      "initialVA": {
+        "od": "",
+        "os": ""
+      },
+      "status": "processing_doctor",
+      "timestamp": 1765375604142
+    },
+    {
+      "id": "id-mj5ovwl7-eg369qw7l",
+      "ticketNumber": 101,
+      "fullName": "Thiện Heo",
+      "dob": 2000,
+      "phone": "",
+      "address": "",
+      "gender": "Nam",
+      "reason": "Cắt kính",
+      "hasGlasses": false,
+      "notes": "",
+      "initialVA": {
+        "od": "",
+        "os": ""
+      },
+      "status": "completed",
+      "timestamp": 1765714604731,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "1",
+            "cyl": "1",
+            "axis": "1",
+            "va": "",
+            "add": ""
+          },
+          "os": {
+            "sph": "1",
+            "cyl": "1",
+            "axis": "1",
+            "va": "",
+            "add": ""
+          },
+          "cycloplegia": true
+        },
+        "subjective": {
+          "od": {
+            "sph": "1",
+            "cyl": "1",
+            "axis": "1",
+            "va": "1",
+            "add": ""
+          },
+          "os": {
+            "sph": "1",
+            "cyl": "1",
+            "axis": "1",
+            "va": "1",
+            "add": ""
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "1",
+            "cyl": "1",
+            "axis": "1",
+            "va": "1",
+            "add": "1",
+            "pd": "55nm"
+          },
+          "os": {
+            "sph": "1",
+            "cyl": "1",
+            "axis": "1",
+            "va": "1",
+            "add": "1",
+            "pd": "55nm"
+          },
+          "lensType": "Đơn tròng - nhìn gần",
+          "distance": true,
+          "near": false
+        },
+        "note": "ư"
+      }
     }
   ],
   "inventory": [
@@ -80,21 +230,8 @@
       },
       "costPrice": 900000,
       "price": 1500000,
-      "quantity": 12,
+      "quantity": 11,
       "minStock": 3
-    },
-    {
-      "id": "5",
-      "code": "FRAME002",
-      "category": "frame",
-      "name": "Nhá»±a Dáº»o HĂ n Quá»‘c",
-      "specs": {
-        "material": "Plastic"
-      },
-      "costPrice": 150000,
-      "price": 300000,
-      "quantity": 100,
-      "minStock": 20
     },
     {
       "id": "6",
@@ -133,7 +270,7 @@
       "name": "s",
       "costPrice": 1,
       "price": 1,
-      "quantity": 1,
+      "quantity": 0,
       "minStock": 5,
       "specs": {
         "sph": 0,
@@ -142,12 +279,101 @@
         "material": "",
         "type": "single"
       }
+    },
+    {
+      "id": "id-mj5oyc2b-natumjosa",
+      "code": "FRAME003",
+      "category": "frame",
+      "name": "Rayban Aviator",
+      "costPrice": 600000,
+      "price": 7999999,
+      "quantity": 6,
+      "minStock": 5,
+      "specs": {
+        "sph": "",
+        "cyl": "",
+        "add": "",
+        "material": "Kim loại",
+        "type": "single"
+      }
+    },
+    {
+      "id": "id-mj5ql6cj-lbzalfijd",
+      "code": "hhh",
+      "category": "lens",
+      "name": "vip",
+      "costPrice": 90000,
+      "price": 900000,
+      "quantity": 49,
+      "minStock": 5,
+      "specs": {
+        "sph": "1",
+        "cyl": "1",
+        "add": "1",
+        "material": "1",
+        "type": "bifocal"
+      }
     }
   ],
-  "invoices": [],
+  "invoices": [
+    {
+      "id": "id-mj5qinc3-m4ixwtw66",
+      "patientId": "2c0527fd-551d-4c7b-b615-09c1aa0f4694",
+      "patientName": "xsv",
+      "patientPhone": "",
+      "patientAddress": "",
+      "items": [
+        {
+          "itemId": "id-miypj2uq-udh83e028",
+          "name": "s",
+          "quantity": 9,
+          "costPrice": 1,
+          "price": 1,
+          "isLens": true
+        }
+      ],
+      "subtotal": 9,
+      "discount": 0,
+      "surcharge": 0,
+      "total": 9,
+      "profit": 0,
+      "date": 1765717345443
+    },
+    {
+      "id": "id-mj5qwfb7-8gg4ucjag",
+      "patientId": "id-mj5ovwl7-eg369qw7l",
+      "patientName": "Thiện Heo",
+      "patientPhone": "",
+      "patientAddress": "",
+      "items": [
+        {
+          "itemId": "4",
+          "name": "Rayban Aviator",
+          "quantity": 1,
+          "costPrice": 900000,
+          "price": 1500000,
+          "isLens": false
+        },
+        {
+          "itemId": "id-mj5ql6cj-lbzalfijd",
+          "name": "vip",
+          "quantity": 1,
+          "costPrice": 90000,
+          "price": 900000,
+          "isLens": true
+        }
+      ],
+      "subtotal": 2400000,
+      "discount": 0,
+      "surcharge": 0,
+      "total": 2400000,
+      "profit": 1410000,
+      "date": 1765717988227
+    }
+  ],
   "settings": {
     "name": "Phòng khám",
-    "adminPassword": "admin123",
+    "adminPassword": "thien123",
     "address": "VÄ©nh Thuáº­n - KiĂªn Giang",
     "phone": "0917416421",
     "email": "huatrungkien@gmail.com",
@@ -181,7 +407,7 @@
       "disclaimer2": "Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng."
     },
     "backup": {
-      "path": "C:\\EyeClinicBackup",
+      "path": "D:\\Project_ThucTap",
       "maxFiles": 10,
       "autoBackupOnClose": true,
       "autoBackupInterval": 4

@@ -59,8 +59,43 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       price: 0,
       quantity: 0,
       minStock: 5,
-      specs: { sph: 0, cyl: 0, add: 0, material: '', type: 'single' }
+      specs: { sph: '', cyl: '', add: '', material: '', type: 'single' }
    });
+   const [nameSuggestions, setNameSuggestions] = useState<InventoryItem[]>([]);
+   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+
+   // Auto-fill khi nh?p tï¿½n s?n ph?m
+   const handleNameChange = (name: string) => {
+      setNewItem({ ...newItem, name });
+
+      if (name.length >= 2) {
+         // T?m s?n ph?m cï¿½ tï¿½n ch?a chu?i nh?p vï¿½o (cï¿½ng category)
+         const matches = inventory.filter(item =>
+            item.category === newItem.category &&
+            item.name.toLowerCase().includes(name.toLowerCase())
+         ).slice(0, 5); // Gi?i h?n 5 g?i ?
+         setNameSuggestions(matches);
+         setShowNameSuggestions(matches.length > 0);
+      } else {
+         setNameSuggestions([]);
+         setShowNameSuggestions(false);
+      }
+   };
+
+   // Ch?n g?i ? ï¿½? auto-fill t?t c? thï¿½ng s?
+   const selectSuggestion = (item: InventoryItem) => {
+      setNewItem({
+         ...newItem,
+         code: item.code,
+         name: item.name,
+         costPrice: item.costPrice,
+         price: item.price,
+         minStock: item.minStock,
+         specs: item.specs || { sph: '', cyl: '', add: '', material: '', type: 'single' }
+         // Khï¿½ng set quantity - ï¿½? user nh?p s? lï¿½?ng mu?n thï¿½m
+      });
+      setShowNameSuggestions(false);
+   };
 
    // Persist activeTab whenever it changes
    useEffect(() => {
@@ -164,6 +199,14 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       setCart(cart.filter(c => c.item.id !== itemId));
    };
 
+   const updateCartQuantity = (itemId: string, newQty: number) => {
+      if (newQty <= 0) {
+         removeFromCart(itemId);
+      } else {
+         setCart(cart.map(c => c.item.id === itemId ? { ...c, qty: newQty } : c));
+      }
+   };
+
    const handleCheckout = () => {
       if (!selectedPatient) return;
       if (cart.length === 0) {
@@ -235,30 +278,73 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       }
 
       if (newItem.id) {
-         // Update
+         // Update existing item
          db.updateInventory(newItem.id, newItem);
          alert('Da cap nhat san pham!');
       } else {
-         // Create
-         const itemToAdd: InventoryItem = {
-            id: generateId(),
-            code: newItem.code!,
-            category: newItem.category as any,
-            name: newItem.name!,
-            costPrice: newItem.costPrice || 0,
-            price: newItem.price || 0,
-            quantity: newItem.quantity || 0,
-            minStock: newItem.minStock || 5,
-            specs: newItem.category === 'lens' || newItem.category === 'frame' ? newItem.specs : undefined
-         };
-         db.addInventoryItem(itemToAdd);
-         alert('Da them san pham moi!');
+         // Check for duplicate item with same code, name and specs
+         const existingItems = db.getInventory();
+         let duplicate = null;
+
+         if (newItem.category === 'lens') {
+            // Tr?ng kï¿½nh: ki?m tra m? + tï¿½n + SPH + CYL + ADD + chi?t su?t
+            duplicate = existingItems.find(item =>
+               item.category === 'lens' &&
+               item.code === newItem.code &&
+               item.name === newItem.name &&
+               String(item.specs?.sph || '') === String(newItem.specs?.sph || '') &&
+               String(item.specs?.cyl || '') === String(newItem.specs?.cyl || '') &&
+               String(item.specs?.add || '') === String(newItem.specs?.add || '') &&
+               (item.specs?.material || '') === (newItem.specs?.material || '')
+            );
+         } else if (newItem.category === 'frame') {
+            // G?ng kï¿½nh: ki?m tra m? + tï¿½n + ch?t li?u
+            duplicate = existingItems.find(item =>
+               item.category === 'frame' &&
+               item.code === newItem.code &&
+               item.name === newItem.name &&
+               (item.specs?.material || '') === (newItem.specs?.material || '')
+            );
+         } else if (newItem.category === 'medicine') {
+            // Thu?c: ki?m tra m? + tï¿½n
+            duplicate = existingItems.find(item =>
+               item.category === 'medicine' &&
+               item.code === newItem.code &&
+               item.name === newItem.name
+            );
+         }
+
+         if (duplicate) {
+            // Increase quantity of existing item
+            const newQuantity = (duplicate.quantity || 0) + (newItem.quantity || 0);
+            db.updateInventory(duplicate.id, { quantity: newQuantity });
+            const categoryName = newItem.category === 'lens' ? 'trong kinh' :
+               newItem.category === 'frame' ? 'gong kinh' : 'thuoc';
+            alert(`Da tang so luong ${categoryName} trung: ${duplicate.name} (${newQuantity} cai)`);
+         } else {
+            // Create new item
+            const itemToAdd: InventoryItem = {
+               id: generateId(),
+               code: newItem.code!,
+               category: newItem.category as any,
+               name: newItem.name!,
+               costPrice: newItem.costPrice || 0,
+               price: newItem.price || 0,
+               quantity: newItem.quantity || 0,
+               minStock: newItem.minStock || 5,
+               specs: (newItem.category === 'lens' || newItem.category === 'frame') ? newItem.specs : undefined
+            };
+            db.addInventoryItem(itemToAdd);
+            const categoryName = newItem.category === 'lens' ? 'trong kinh' :
+               newItem.category === 'frame' ? 'gong kinh' : 'thuoc';
+            alert(`Da them ${categoryName} moi!`);
+         }
       }
 
       setShowAddItem(false);
       setNewItem({
          category: 'lens', name: '', code: '', costPrice: 0, price: 0, quantity: 0, minStock: 5,
-         specs: { sph: 0, cyl: 0, add: 0, material: '', type: 'single' }
+         specs: { sph: '', cyl: '', add: '', material: '', type: 'single' }
       });
       refreshData();
    };
@@ -391,19 +477,50 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  <div className="mb-3">
                                     <p className="text-sm font-medium text-gray-700 mb-2">Trong mat phai (OD):</p>
                                     <div className="flex gap-2 overflow-x-auto pb-2">
-                                       {suggestedLensesOD.map(lens => (
-                                          <div
-                                             key={lens.id}
-                                             className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs cursor-pointer hover:ring-2 hover:ring-brand-500"
-                                             onClick={() => addToCart(lens)}
-                                          >
-                                             <div className="font-bold text-gray-800">{lens.name}</div>
-                                             <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
-                                             {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
-                                             <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
-                                             <div className="text-gray-400">Kho: {lens.quantity}</div>
-                                          </div>
-                                       ))}
+                                       {suggestedLensesOD.map(lens => {
+                                          const inCart = cart.find(c => c.item.id === lens.id);
+                                          const qty = inCart?.qty || 0;
+                                          return (
+                                             <div
+                                                key={lens.id}
+                                                className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs"
+                                             >
+                                                <div className="font-bold text-gray-800">{lens.name}</div>
+                                                <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
+                                                {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
+                                                <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
+                                                <div className="text-gray-400">Kho: {lens.quantity}</div>
+
+                                                {/* Nút tăng giảm số lượng */}
+                                                <div className="flex items-center justify-between mt-2 border-t pt-2">
+                                                   {qty === 0 ? (
+                                                      <button
+                                                         onClick={() => addToCart(lens)}
+                                                         className="w-full py-1 bg-brand-600 text-white rounded text-xs font-bold hover:bg-brand-700"
+                                                      >
+                                                         + Them vao don
+                                                      </button>
+                                                   ) : (
+                                                      <div className="flex items-center gap-2 w-full justify-center">
+                                                         <button
+                                                            onClick={() => updateCartQuantity(lens.id, qty - 1)}
+                                                            className="w-7 h-7 bg-red-100 text-red-600 rounded-full font-bold hover:bg-red-200"
+                                                         >
+                                                            -
+                                                         </button>
+                                                         <span className="font-bold text-lg min-w-[24px] text-center">{qty}</span>
+                                                         <button
+                                                            onClick={() => updateCartQuantity(lens.id, qty + 1)}
+                                                            className="w-7 h-7 bg-green-100 text-green-600 rounded-full font-bold hover:bg-green-200"
+                                                         >
+                                                            +
+                                                         </button>
+                                                      </div>
+                                                   )}
+                                                </div>
+                                             </div>
+                                          );
+                                       })}
                                     </div>
                                  </div>
                               )}
@@ -412,19 +529,50 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  <div>
                                     <p className="text-sm font-medium text-gray-700 mb-2">Trong mat trai (OS):</p>
                                     <div className="flex gap-2 overflow-x-auto pb-2">
-                                       {suggestedLensesOS.map(lens => (
-                                          <div
-                                             key={lens.id}
-                                             className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs cursor-pointer hover:ring-2 hover:ring-brand-500"
-                                             onClick={() => addToCart(lens)}
-                                          >
-                                             <div className="font-bold text-gray-800">{lens.name}</div>
-                                             <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
-                                             {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
-                                             <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
-                                             <div className="text-gray-400">Kho: {lens.quantity}</div>
-                                          </div>
-                                       ))}
+                                       {suggestedLensesOS.map(lens => {
+                                          const inCart = cart.find(c => c.item.id === lens.id);
+                                          const qty = inCart?.qty || 0;
+                                          return (
+                                             <div
+                                                key={lens.id}
+                                                className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs"
+                                             >
+                                                <div className="font-bold text-gray-800">{lens.name}</div>
+                                                <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
+                                                {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
+                                                <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
+                                                <div className="text-gray-400">Kho: {lens.quantity}</div>
+
+                                                {/* Nút tăng giảm số lượng */}
+                                                <div className="flex items-center justify-between mt-2 border-t pt-2">
+                                                   {qty === 0 ? (
+                                                      <button
+                                                         onClick={() => addToCart(lens)}
+                                                         className="w-full py-1 bg-brand-600 text-white rounded text-xs font-bold hover:bg-brand-700"
+                                                      >
+                                                         + Them vao don
+                                                      </button>
+                                                   ) : (
+                                                      <div className="flex items-center gap-2 w-full justify-center">
+                                                         <button
+                                                            onClick={() => updateCartQuantity(lens.id, qty - 1)}
+                                                            className="w-7 h-7 bg-red-100 text-red-600 rounded-full font-bold hover:bg-red-200"
+                                                         >
+                                                            -
+                                                         </button>
+                                                         <span className="font-bold text-lg min-w-[24px] text-center">{qty}</span>
+                                                         <button
+                                                            onClick={() => updateCartQuantity(lens.id, qty + 1)}
+                                                            className="w-7 h-7 bg-green-100 text-green-600 rounded-full font-bold hover:bg-green-200"
+                                                         >
+                                                            +
+                                                         </button>
+                                                      </div>
+                                                   )}
+                                                </div>
+                                             </div>
+                                          );
+                                       })}
                                     </div>
                                  </div>
                               )}
@@ -658,7 +806,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         setNewItem({
                            category: inventoryCategoryTab,
                            name: '', code: '', costPrice: 0, price: 0, quantity: 0, minStock: 5,
-                           specs: { sph: 0, cyl: 0, add: 0, material: '', type: 'single' }
+                           specs: { sph: '', cyl: '', add: '', material: '', type: 'single' }
                         });
                         setShowAddItem(true);
                      }}
@@ -749,7 +897,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  <input
                                     type="radio"
                                     checked={newItem.category === type}
-                                    onChange={() => setNewItem({ ...newItem, category: type, specs: { sph: 0, cyl: 0, add: 0, material: '', type: 'single' } })}
+                                    onChange={() => setNewItem({ ...newItem, category: type, specs: { sph: '', cyl: '', add: '', material: '', type: 'single' } })}
                                  />
                                  <span className="capitalize">{type === 'lens' ? 'Trong kinh' : type === 'frame' ? 'Gong kinh' : 'Thuoc'}</span>
                               </label>
@@ -757,15 +905,47 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         </div>
                      </div>
 
-                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                           <label className="block text-sm font-medium mb-1">Ma hang (Code) *</label>
-                           <input className="w-full border rounded p-2" value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="VD: LENS01" />
-                        </div>
-                        <div>
-                           <label className="block text-sm font-medium mb-1">Ten hang hoa *</label>
-                           <input className="w-full border rounded p-2" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="VD: Essilor..." />
-                        </div>
+                     {/* Tï¿½n hï¿½ng hï¿½a - full width v?i g?i ? */}
+                     <div className="relative">
+                        <label className="block text-sm font-medium mb-1">Ten hang hoa *</label>
+                        <input
+                           className="w-full border rounded p-2"
+                           value={newItem.name}
+                           onChange={e => handleNameChange(e.target.value)}
+                           onFocus={() => newItem.name && newItem.name.length >= 2 && setShowNameSuggestions(nameSuggestions.length > 0)}
+                           onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
+                           placeholder="Nhap ten de tim san pham co san..."
+                        />
+                        <p className="text-xs text-gray-400 mt-1"> Nhap ten san pham, he thong se tu dong goi y neu da co trong kho</p>
+                        {/* Dropdown g?i ? */}
+                        {showNameSuggestions && nameSuggestions.length > 0 && (
+                           <div className="absolute z-50 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                              <div className="px-3 py-2 bg-green-50 text-green-700 text-xs font-medium border-b">
+                                 Tim thay {nameSuggestions.length} san pham - Click de tu dong dien
+                              </div>
+                              {nameSuggestions.map(item => (
+                                 <div
+                                    key={item.id}
+                                    className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-b-0"
+                                    onMouseDown={() => selectSuggestion(item)}
+                                 >
+                                    <div className="font-medium text-gray-800">{item.name}</div>
+                                    <div className="text-xs text-gray-500 flex gap-3">
+                                       <span>Ma: {item.code}</span>
+                                       <span>Gia: {item.price?.toLocaleString()}d</span>
+                                       <span>Ton: {item.quantity}</span>
+                                       {item.specs?.material && <span>CL: {item.specs.material}</span>}
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
+                     </div>
+
+                     {/* M? hï¿½ng */}
+                     <div>
+                        <label className="block text-sm font-medium mb-1">Ma hang (Code) *</label>
+                        <input className="w-full border rounded p-2" value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="VD: LENS01, FRAME001..." />
                      </div>
 
                      <div className="grid grid-cols-4 gap-4">
@@ -794,15 +974,46 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                            <div className="grid grid-cols-2 gap-3">
                               <div>
                                  <label className="text-xs">Do Cau (SPH)</label>
-                                 <input className="border rounded w-full p-1" type="number" step="0.25" value={newItem.specs.sph} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, sph: parseFloat(e.target.value) } })} />
+                                 <input
+                                    className="border rounded w-full p-1"
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="VD: -2.50, +1.25"
+                                    value={newItem.specs.sph ?? ''}
+                                    onChange={e => {
+                                       const val = e.target.value;
+                                       // Cho phep nhap chuoi de ho tro so am
+                                       setNewItem({ ...newItem, specs: { ...newItem.specs, sph: val } });
+                                    }}
+                                 />
                               </div>
                               <div>
                                  <label className="text-xs">Do Loan (CYL)</label>
-                                 <input className="border rounded w-full p-1" type="number" step="0.25" value={newItem.specs.cyl} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, cyl: parseFloat(e.target.value) } })} />
+                                 <input
+                                    className="border rounded w-full p-1"
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="VD: -1.00, -0.50"
+                                    value={newItem.specs.cyl ?? ''}
+                                    onChange={e => {
+                                       const val = e.target.value;
+                                       setNewItem({ ...newItem, specs: { ...newItem.specs, cyl: val } });
+                                    }}
+                                 />
                               </div>
                               <div>
                                  <label className="text-xs">Do ADD (neu co)</label>
-                                 <input className="border rounded w-full p-1" type="number" step="0.25" value={newItem.specs.add || 0} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, add: parseFloat(e.target.value) } })} />
+                                 <input
+                                    className="border rounded w-full p-1"
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="VD: +1.50"
+                                    value={newItem.specs.add ?? ''}
+                                    onChange={e => {
+                                       const val = e.target.value;
+                                       setNewItem({ ...newItem, specs: { ...newItem.specs, add: val } });
+                                    }}
+                                 />
                               </div>
                               <div>
                                  <label className="text-xs">Chiet suat</label>
@@ -976,309 +1187,242 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                      </div>
                   )}
             </div>
-         )}
+         )
+         }
 
          {/* Modal Xem Chi Tiet Hoa Don */}
-         {viewingInvoice && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-               <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl">
-                  <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-xl font-bold">đŸ“‹ Chi Tiet Hoa Don</h3>
-                     <button onClick={() => setViewingInvoice(null)} className="text-gray-500 hover:text-gray-800">
-                        <X size={24} />
-                     </button>
-                  </div>
+         {
+            viewingInvoice && (
+               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl">
+                     <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold">đŸ“‹ Chi Tiet Hoa Don</h3>
+                        <button onClick={() => setViewingInvoice(null)} className="text-gray-500 hover:text-gray-800">
+                           <X size={24} />
+                        </button>
+                     </div>
 
-                  <div className="space-y-3 mb-4">
-                     <div className="flex justify-between border-b pb-2">
-                        <span className="text-gray-600">Ma hoa don:</span>
-                        <span className="font-mono text-sm">{viewingInvoice.id.slice(0, 8)}...</span>
-                     </div>
-                     <div className="flex justify-between border-b pb-2">
-                        <span className="text-gray-600">Khach hang:</span>
-                        <span className="font-bold">{viewingInvoice.patientName}</span>
-                     </div>
-                     <div className="flex justify-between border-b pb-2">
-                        <span className="text-gray-600">Ngay tao:</span>
-                        <span>{new Date(viewingInvoice.date).toLocaleString('vi-VN')}</span>
-                     </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                     <h4 className="font-bold mb-2">San pham:</h4>
-                     {viewingInvoice.items.map((item: any, i: number) => (
-                        <div key={i} className="flex justify-between py-1">
-                           <span>{item.name} x{item.quantity}</span>
-                           <span>{(item.price * item.quantity).toLocaleString()} d</span>
+                     <div className="space-y-3 mb-4">
+                        <div className="flex justify-between border-b pb-2">
+                           <span className="text-gray-600">Ma hoa don:</span>
+                           <span className="font-mono text-sm">{viewingInvoice.id.slice(0, 8)}...</span>
                         </div>
-                     ))}
-                  </div>
-
-                  <div className="space-y-2 border-t pt-4">
-                     <div className="flex justify-between">
-                        <span>Tam tinh:</span>
-                        <span>{viewingInvoice.subtotal?.toLocaleString()} d</span>
-                     </div>
-                     {viewingInvoice.discount > 0 && (
-                        <div className="flex justify-between text-red-600">
-                           <span>Giam gia:</span>
-                           <span>-{viewingInvoice.discount.toLocaleString()} d</span>
+                        <div className="flex justify-between border-b pb-2">
+                           <span className="text-gray-600">Khach hang:</span>
+                           <span className="font-bold">{viewingInvoice.patientName}</span>
                         </div>
-                     )}
-                     {viewingInvoice.surcharge > 0 && (
-                        <div className="flex justify-between text-orange-600">
-                           <span>Phu thu:</span>
-                           <span>+{viewingInvoice.surcharge.toLocaleString()} d</span>
+                        <div className="flex justify-between border-b pb-2">
+                           <span className="text-gray-600">Ngay tao:</span>
+                           <span>{new Date(viewingInvoice.date).toLocaleString('vi-VN')}</span>
                         </div>
-                     )}
-                     <div className="flex justify-between font-bold text-lg text-green-600 border-t pt-2">
-                        <span>Tong cong:</span>
-                        <span>{viewingInvoice.total.toLocaleString()} d</span>
-                     </div>
-                  </div>
-
-                  <button
-                     onClick={() => setViewingInvoice(null)}
-                     className="mt-4 w-full py-2 bg-brand-600 text-white font-bold rounded hover:bg-brand-700"
-                  >
-                     Dong
-                  </button>
-               </div>
-            </div>
-         )}
-
-         {/* Modal Sua Hoa Don */}
-         {editingInvoice && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-               <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-                  <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-xl font-bold">âœï¸  Sua Hoa Don</h3>
-                     <button onClick={() => setEditingInvoice(null)} className="text-gray-500 hover:text-gray-800">
-                        <X size={24} />
-                     </button>
-                  </div>
-
-                  <div className="space-y-4">
-                     <div>
-                        <label className="block text-sm font-medium mb-1">Ten khach hang</label>
-                        <input
-                           className="w-full border rounded p-2"
-                           value={editingInvoice.patientName}
-                           onChange={e => setEditingInvoice({ ...editingInvoice, patientName: e.target.value })}
-                        />
                      </div>
 
-                     <div>
-                        <label className="block text-sm font-medium mb-2">San pham:</label>
-                        {editingInvoice.items.map((item: any, i: number) => (
-                           <div key={i} className="flex gap-2 mb-2 items-center bg-gray-50 p-2 rounded">
-                              <span className="flex-1 text-sm">{item.name}</span>
-                              <div className="flex items-center gap-1">
-                                 <span className="text-xs">SL:</span>
-                                 <input
-                                    type="number"
-                                    className="w-16 border rounded p-1 text-center"
-                                    value={item.quantity}
-                                    onChange={e => {
-                                       const newItems = [...editingInvoice.items];
-                                       newItems[i].quantity = parseInt(e.target.value) || 1;
-                                       setEditingInvoice({ ...editingInvoice, items: newItems });
-                                    }}
-                                    min="1"
-                                 />
-                              </div>
-                              <span className="text-sm font-bold">{(item.price * item.quantity).toLocaleString()}</span>
+                     <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                        <h4 className="font-bold mb-2">San pham:</h4>
+                        {viewingInvoice.items.map((item: any, i: number) => (
+                           <div key={i} className="flex justify-between py-1">
+                              <span>{item.name} x{item.quantity}</span>
+                              <span>{(item.price * item.quantity).toLocaleString()} d</span>
                            </div>
                         ))}
                      </div>
 
-                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                           <label className="block text-sm font-medium mb-1">Giam gia (d)</label>
-                           <input
-                              type="number"
-                              className="w-full border rounded p-2"
-                              value={editingInvoice.discount}
-                              onChange={e => setEditingInvoice({ ...editingInvoice, discount: parseInt(e.target.value) || 0 })}
-                           />
+                     <div className="space-y-2 border-t pt-4">
+                        <div className="flex justify-between">
+                           <span>Tam tinh:</span>
+                           <span>{viewingInvoice.subtotal?.toLocaleString()} d</span>
                         </div>
-                        <div>
-                           <label className="block text-sm font-medium mb-1">Phu thu (d)</label>
-                           <input
-                              type="number"
-                              className="w-full border rounded p-2"
-                              value={editingInvoice.surcharge}
-                              onChange={e => setEditingInvoice({ ...editingInvoice, surcharge: parseInt(e.target.value) || 0 })}
-                           />
+                        {viewingInvoice.discount > 0 && (
+                           <div className="flex justify-between text-red-600">
+                              <span>Giam gia:</span>
+                              <span>-{viewingInvoice.discount.toLocaleString()} d</span>
+                           </div>
+                        )}
+                        {viewingInvoice.surcharge > 0 && (
+                           <div className="flex justify-between text-orange-600">
+                              <span>Phu thu:</span>
+                              <span>+{viewingInvoice.surcharge.toLocaleString()} d</span>
+                           </div>
+                        )}
+                        <div className="flex justify-between font-bold text-lg text-green-600 border-t pt-2">
+                           <span>Tong cong:</span>
+                           <span>{viewingInvoice.total.toLocaleString()} d</span>
                         </div>
                      </div>
 
-                     <div className="bg-green-50 p-3 rounded border border-green-200">
-                        <div className="flex justify-between font-bold text-lg text-green-700">
-                           <span>Tong cong (uoc tinh):</span>
-                           <span>
-                              {(editingInvoice.items.reduce((s: number, i: any) => s + (i.quantity * i.price), 0)
-                                 - editingInvoice.discount + editingInvoice.surcharge).toLocaleString()} d
-                           </span>
-                        </div>
-                     </div>
-                  </div>
-
-                  <div className="flex gap-3 mt-6">
                      <button
-                        onClick={() => setEditingInvoice(null)}
-                        className="flex-1 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300"
+                        onClick={() => setViewingInvoice(null)}
+                        className="mt-4 w-full py-2 bg-brand-600 text-white font-bold rounded hover:bg-brand-700"
                      >
-                        Huy
-                     </button>
-                     <button
-                        onClick={handleUpdateInvoice}
-                        className="flex-1 py-2 bg-brand-600 text-white font-bold rounded hover:bg-brand-700"
-                     >
-                        Luu thay doi
+                        Dong
                      </button>
                   </div>
                </div>
-            </div>
-         )}
+            )
+         }
+
+         {/* Modal Sua Hoa Don */}
+         {
+            editingInvoice && (
+               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+                     <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold">âœï¿½  Sua Hoa Don</h3>
+                        <button onClick={() => setEditingInvoice(null)} className="text-gray-500 hover:text-gray-800">
+                           <X size={24} />
+                        </button>
+                     </div>
+
+                     <div className="space-y-4">
+                        <div>
+                           <label className="block text-sm font-medium mb-1">Ten khach hang</label>
+                           <input
+                              className="w-full border rounded p-2"
+                              value={editingInvoice.patientName}
+                              onChange={e => setEditingInvoice({ ...editingInvoice, patientName: e.target.value })}
+                           />
+                        </div>
+
+                        <div>
+                           <label className="block text-sm font-medium mb-2">San pham:</label>
+                           {editingInvoice.items.map((item: any, i: number) => (
+                              <div key={i} className="flex gap-2 mb-2 items-center bg-gray-50 p-2 rounded">
+                                 <span className="flex-1 text-sm">{item.name}</span>
+                                 <div className="flex items-center gap-1">
+                                    <span className="text-xs">SL:</span>
+                                    <input
+                                       type="number"
+                                       className="w-16 border rounded p-1 text-center"
+                                       value={item.quantity}
+                                       onChange={e => {
+                                          const newItems = [...editingInvoice.items];
+                                          newItems[i].quantity = parseInt(e.target.value) || 1;
+                                          setEditingInvoice({ ...editingInvoice, items: newItems });
+                                       }}
+                                       min="1"
+                                    />
+                                 </div>
+                                 <span className="text-sm font-bold">{(item.price * item.quantity).toLocaleString()}</span>
+                              </div>
+                           ))}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                           <div>
+                              <label className="block text-sm font-medium mb-1">Giam gia (d)</label>
+                              <input
+                                 type="number"
+                                 className="w-full border rounded p-2"
+                                 value={editingInvoice.discount}
+                                 onChange={e => setEditingInvoice({ ...editingInvoice, discount: parseInt(e.target.value) || 0 })}
+                              />
+                           </div>
+                           <div>
+                              <label className="block text-sm font-medium mb-1">Phu thu (d)</label>
+                              <input
+                                 type="number"
+                                 className="w-full border rounded p-2"
+                                 value={editingInvoice.surcharge}
+                                 onChange={e => setEditingInvoice({ ...editingInvoice, surcharge: parseInt(e.target.value) || 0 })}
+                              />
+                           </div>
+                        </div>
+
+                        <div className="bg-green-50 p-3 rounded border border-green-200">
+                           <div className="flex justify-between font-bold text-lg text-green-700">
+                              <span>Tong cong (uoc tinh):</span>
+                              <span>
+                                 {(editingInvoice.items.reduce((s: number, i: any) => s + (i.quantity * i.price), 0)
+                                    - editingInvoice.discount + editingInvoice.surcharge).toLocaleString()} d
+                              </span>
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="flex gap-3 mt-6">
+                        <button
+                           onClick={() => setEditingInvoice(null)}
+                           className="flex-1 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300"
+                        >
+                           Huy
+                        </button>
+                        <button
+                           onClick={handleUpdateInvoice}
+                           className="flex-1 py-2 bg-brand-600 text-white font-bold rounded hover:bg-brand-700"
+                        >
+                           Luu thay doi
+                        </button>
+                     </div>
+                  </div>
+               </div>
+            )
+         }
 
          {/* Hidden Print Area for Invoice */}
-         <div className="print-area">
-            {selectedPatient && cart.length > 0 && (
-               <div className="print-thermal" style={{ fontFamily: 'Courier, monospace', fontSize: '11px', color: 'black', background: 'white', width: '50mm', padding: '3mm' }}>
-                  <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '2mm' }}>PHONG KHAM MAT NGOAI GIO</div>
-                  <div style={{ textAlign: 'center', fontSize: '10px', marginBottom: '3mm' }}>BSCKII. Hua Trung Kien</div>
-                  <div style={{ borderBottom: '1px dashed black', marginBottom: '2mm' }}></div>
-
-                  <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '2mm' }}>HOA DON BAN HANG</div>
-                  <div style={{ fontSize: '9px', marginBottom: '2mm' }}>
-                     Ngay: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-
-                  <div style={{ borderBottom: '1px dashed black', marginBottom: '2mm' }}></div>
-
-                  <div style={{ marginBottom: '2mm' }}>
-                     <div><b>KH:</b> {selectedPatient.fullName}</div>
-                     <div><b>SDT:</b> {selectedPatient.phone}</div>
-                     {selectedPatient.address && <div style={{ fontSize: '9px' }}><b>DC:</b> {selectedPatient.address}</div>}
-                  </div>
-
-                  <div style={{ borderBottom: '1px dashed black', marginBottom: '2mm' }}></div>
-
-                  {cart.map((c, i) => (
-                     <div key={i} style={{ marginBottom: '1mm', fontSize: '10px' }}>
-                        <div>{c.item.name}</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                           <span>{c.qty} x {c.item.price.toLocaleString()}</span>
-                           <span>{(c.qty * c.item.price).toLocaleString()}</span>
-                        </div>
-                     </div>
-                  ))}
-
-                  <div style={{ borderBottom: '1px dashed black', marginTop: '2mm', marginBottom: '2mm' }}></div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
-                     <span>Tam tinh:</span>
-                     <span>{cart.reduce((s, c) => s + c.item.price * c.qty, 0).toLocaleString()} d</span>
-                  </div>
-
-                  {extraCharges.discount > 0 && (
-                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'red' }}>
-                        <span>Giam gia:</span>
-                        <span>-{extraCharges.discount.toLocaleString()} d</span>
-                     </div>
-                  )}
-
-                  {extraCharges.surcharge > 0 && (
-                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
-                        <span>Phu thu:</span>
-                        <span>+{extraCharges.surcharge.toLocaleString()} d</span>
-                     </div>
-                  )}
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '12px', marginTop: '2mm', borderTop: '1px dashed black', paddingTop: '2mm' }}>
-                     <span>TONG:</span>
-                     <span>{(cart.reduce((s, c) => s + c.item.price * c.qty, 0) + extraCharges.surcharge - extraCharges.discount).toLocaleString()} d</span>
-                  </div>
-
-                  <div style={{ textAlign: 'center', marginTop: '4mm', fontSize: '9px', fontStyle: 'italic' }}>
-                     Cam on quy khach!<br />
-                     Vui long giu hoa don de bao hanh.
-                  </div>
-               </div>
-            )}
-         </div>
-
-         {/* Print Area for Reprinting Invoice from History */}
          {printingInvoice && (
-            <div className="print-area">
-               <div className="print-thermal" style={{ fontFamily: 'Courier, monospace', fontSize: '11px', color: 'black', background: 'white', width: '50mm', padding: '3mm' }}>
-                  <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '2mm' }}>PHONG KHAM MAT NGOAI GIO</div>
-                  <div style={{ textAlign: 'center', fontSize: '10px', marginBottom: '3mm' }}>BSCKII. Hua Trung Kien</div>
-                  <div style={{ borderBottom: '1px dashed black', marginBottom: '2mm' }}></div>
+            <div className="print-area hidden print:block" style={{ width: '58mm', fontFamily: 'Arial, sans-serif', fontSize: '10px', padding: '2mm' }}>
+               {/* Header - Thông tin phòng khám */}
+               <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '3mm', marginBottom: '3mm' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase' }}>{settings.name || 'PHONG KHAM MAT'}</div>
+                  {settings.doctorName && <div style={{ fontSize: '9px' }}>{settings.doctorName}</div>}
+                  {settings.phone && <div style={{ fontSize: '9px' }}>DT: {settings.phone}</div>}
+                  <div style={{ fontWeight: 'bold', marginTop: '3mm', fontSize: '11px' }}>HOA DON BAN LE</div>
+               </div>
 
-                  <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '2mm' }}>HOA DON BAN HANG</div>
-                  <div style={{ fontSize: '9px', marginBottom: '2mm' }}>
-                     Ngay: {new Date(printingInvoice.date).toLocaleDateString('vi-VN')} {new Date(printingInvoice.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+               {/* Thông tin hóa đơn */}
+               <div style={{ marginBottom: '3mm', fontSize: '9px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                     <span>{printingInvoice.date ? new Date(printingInvoice.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''}</span>
+                     <span>{printingInvoice.date ? new Date(printingInvoice.date).toLocaleDateString('vi-VN') : ''}</span>
                   </div>
-                  <div style={{ fontSize: '8px', marginBottom: '2mm', color: '#666' }}>
-                     Ma HD: {printingInvoice.id.slice(0, 8)}...
-                  </div>
+                  <div style={{ fontWeight: 'bold', marginTop: '1mm' }}>KH: {printingInvoice.patientName || 'Khach le'}</div>
+                  {printingInvoice.patientPhone && <div>SDT: {printingInvoice.patientPhone}</div>}
+               </div>
 
-                  <div style={{ borderBottom: '1px dashed black', marginBottom: '2mm' }}></div>
-
-                  <div style={{ marginBottom: '2mm' }}>
-                     <div><b>KH:</b> {printingInvoice.patientName}</div>
-                     {printingInvoice.patientPhone && <div><b>SDT:</b> {printingInvoice.patientPhone}</div>}
-                     {printingInvoice.patientAddress && <div style={{ fontSize: '9px' }}><b>DC:</b> {printingInvoice.patientAddress}</div>}
-                  </div>
-
-                  <div style={{ borderBottom: '1px dashed black', marginBottom: '2mm' }}></div>
-
-                  {printingInvoice.items.map((item: any, i: number) => (
-                     <div key={i} style={{ marginBottom: '1mm', fontSize: '10px' }}>
-                        <div>{item.name}</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                           <span>{item.quantity} x {item.price.toLocaleString()}</span>
-                           <span>{(item.quantity * item.price).toLocaleString()}</span>
+               {/* Chi tiết sản phẩm */}
+               <div style={{ borderTop: '1px dashed black', borderBottom: '1px dashed black', paddingTop: '2mm', paddingBottom: '2mm' }}>
+                  {printingInvoice.items?.map((item: any, idx: number) => (
+                     <div key={idx} style={{ marginBottom: '2mm', fontSize: '9px' }}>
+                        <div style={{ fontWeight: '500' }}>{idx + 1}. {item.name}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '3mm', color: '#333' }}>
+                           <span>{item.quantity} x {item.price?.toLocaleString()}d</span>
+                           <span style={{ fontWeight: 'bold' }}>{(item.price * item.quantity).toLocaleString()}</span>
                         </div>
                      </div>
                   ))}
+               </div>
 
-                  <div style={{ borderBottom: '1px dashed black', marginTop: '2mm', marginBottom: '2mm' }}></div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+               {/* Tổng tiền */}
+               <div style={{ marginTop: '2mm', fontSize: '9px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                      <span>Tam tinh:</span>
-                     <span>{printingInvoice.subtotal?.toLocaleString()} d</span>
+                     <span>{(printingInvoice.items?.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0) || 0).toLocaleString()}</span>
                   </div>
-
-                  {printingInvoice.discount > 0 && (
-                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'red' }}>
-                        <span>Giam gia:</span>
-                        <span>-{printingInvoice.discount.toLocaleString()} d</span>
-                     </div>
-                  )}
 
                   {printingInvoice.surcharge > 0 && (
-                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>Phu thu:</span>
-                        <span>+{printingInvoice.surcharge.toLocaleString()} d</span>
+                        <span>+{printingInvoice.surcharge.toLocaleString()}</span>
                      </div>
                   )}
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '12px', marginTop: '2mm', borderTop: '1px dashed black', paddingTop: '2mm' }}>
-                     <span>TONG:</span>
-                     <span>{printingInvoice.total.toLocaleString()} d</span>
-                  </div>
+                  {printingInvoice.discount > 0 && (
+                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'red' }}>
+                        <span>Giam gia:</span>
+                        <span>-{printingInvoice.discount.toLocaleString()}</span>
+                     </div>
+                  )}
+               </div>
 
-                  <div style={{ textAlign: 'center', marginTop: '4mm', fontSize: '9px', fontStyle: 'italic' }}>
-                     Cam on quy khach!<br />
-                     Vui long giu hoa don de bao hanh.
-                  </div>
+               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '12px', marginTop: '2mm', borderTop: '1px dashed black', paddingTop: '2mm' }}>
+                  <span>TONG CONG:</span>
+                  <span>{printingInvoice.total?.toLocaleString()}</span>
+               </div>
 
-                  <div style={{ textAlign: 'center', marginTop: '2mm', fontSize: '8px', color: '#999' }}>
-                     (In lai)
-                  </div>
+               {/* Footer */}
+               <div style={{ textAlign: 'center', marginTop: '4mm', fontSize: '9px', fontStyle: 'italic' }}>
+                  Cam on quy khach!<br />
+                  Hen gap lai
                </div>
             </div>
          )}
