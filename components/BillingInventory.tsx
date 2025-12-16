@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { Patient, InventoryItem } from '../types';
 import { Search, Printer, Plus, Edit, X, Save, FilePlus, Glasses, Eye, Trash2 } from 'lucide-react';
@@ -6,6 +6,14 @@ import { useAuth } from '../contexts/AuthContext';
 
 // UUID generator that works on HTTP
 const generateId = () => 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
+
+// Helper function to format diopter values - show "Plano" for zero
+const formatDiopter = (value: number | string | undefined): string => {
+   if (value === undefined || value === null || value === '') return '';
+   const num = typeof value === 'string' ? parseFloat(value) : value;
+   if (isNaN(num) || num === 0) return 'Plano';
+   return num > 0 ? `+${num.toFixed(2)}` : num.toFixed(2);
+};
 
 interface BillingInventoryProps {
    activeTab?: 'billing' | 'inventory' | 'invoices';
@@ -64,12 +72,12 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    const [nameSuggestions, setNameSuggestions] = useState<InventoryItem[]>([]);
    const [showNameSuggestions, setShowNameSuggestions] = useState(false);
 
-   // Auto-fill khi nh?p tï¿½n s?n ph?m
+   // Auto-fill khi nh?p t�n s?n ph?m
    const handleNameChange = (name: string) => {
       setNewItem({ ...newItem, name });
 
       if (name.length >= 2) {
-         // T?m s?n ph?m cï¿½ tï¿½n ch?a chu?i nh?p vï¿½o (cï¿½ng category)
+         // T?m s?n ph?m c� t�n ch?a chu?i nh?p v�o (c�ng category)
          const matches = inventory.filter(item =>
             item.category === newItem.category &&
             item.name.toLowerCase().includes(name.toLowerCase())
@@ -82,7 +90,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       }
    };
 
-   // Ch?n g?i ? ï¿½? auto-fill t?t c? thï¿½ng s?
+   // Ch?n g?i ? �? auto-fill t?t c? th�ng s?
    const selectSuggestion = (item: InventoryItem) => {
       setNewItem({
          ...newItem,
@@ -92,7 +100,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          price: item.price,
          minStock: item.minStock,
          specs: item.specs || { sph: '', cyl: '', add: '', material: '', type: 'single' }
-         // Khï¿½ng set quantity - ï¿½? user nh?p s? lï¿½?ng mu?n thï¿½m
+         // Kh�ng set quantity - �? user nh?p s? l�?ng mu?n th�m
       });
       setShowNameSuggestions(false);
    };
@@ -115,7 +123,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       setInvoices(db.getInvoices());
    };
 
-   // Khi chá»n bá»‡nh nhĂ¢n, tá»± Ä‘á»™ng gá»£i Ă½ trĂ²ng kĂ­nh
+   // Khi chọn bệnh nhA�n, tự động gợi A� trA�ng kA�nh
    const handleSelectPatient = (p: Patient) => {
       setSelectedPatient(p);
       setExtraCharges({ discount: 0, surcharge: 0 });
@@ -124,37 +132,37 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       setFrameSearchCode('');
 
       if (p.refraction) {
-         // Gá»£i Ă½ trĂ²ng theo Ä‘á»™ prescription
+         // Gợi A� trA�ng theo độ prescription
          const inv = db.getInventory().filter(i => i.category === 'lens');
 
-         // TrĂ²ng máº¯t pháº£i (OD)
+         // TrA�ng mắt phải (OD)
          const odSph = parseFloat(p.refraction.finalRx.od.sph) || 0;
          const odCyl = parseFloat(p.refraction.finalRx.od.cyl) || 0;
          const odAdd = parseFloat(p.refraction.finalRx.od.add || '0') || 0;
 
          const matchesOD = inv.filter(item => {
-            const itemSph = item.specs?.sph || 0;
-            const itemCyl = item.specs?.cyl || 0;
+            const itemSph = formatDiopter(item.specs?.sph) || 0;
+            const itemCyl = formatDiopter(item.specs?.cyl) || 0;
             const itemAdd = item.specs?.add || 0;
 
-            // Kiá»ƒm tra Ä‘á»™ cáº§u (SPH) chĂªnh lá»‡ch <= 0.25
+            // Kiểm tra độ cầu (SPH) chA�nh lệch <= 0.25
             const sphMatch = Math.abs(itemSph - odSph) <= 0.25;
-            // Kiá»ƒm tra Ä‘á»™ loáº¡n (CYL) chĂªnh lá»‡ch <= 0.25
+            // Kiểm tra độ loạn (CYL) chA�nh lệch <= 0.25
             const cylMatch = Math.abs(itemCyl - odCyl) <= 0.25;
-            // Kiá»ƒm tra ADD náº¿u cĂ³
+            // Kiểm tra ADD nếu cA�
             const addMatch = odAdd === 0 || (itemAdd !== undefined && Math.abs(itemAdd - odAdd) <= 0.25);
 
             return sphMatch && cylMatch && addMatch && item.quantity > 0;
          });
 
-         // TrĂ²ng máº¯t trĂ¡i (OS)
+         // TrA�ng mắt trA�i (OS)
          const osSph = parseFloat(p.refraction.finalRx.os.sph) || 0;
          const osCyl = parseFloat(p.refraction.finalRx.os.cyl) || 0;
          const osAdd = parseFloat(p.refraction.finalRx.os.add || '0') || 0;
 
          const matchesOS = inv.filter(item => {
-            const itemSph = item.specs?.sph || 0;
-            const itemCyl = item.specs?.cyl || 0;
+            const itemSph = formatDiopter(item.specs?.sph) || 0;
+            const itemCyl = formatDiopter(item.specs?.cyl) || 0;
             const itemAdd = item.specs?.add || 0;
 
             const sphMatch = Math.abs(itemSph - osSph) <= 0.25;
@@ -172,7 +180,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       }
    };
 
-   // TĂ¬m gá»ng kĂ­nh theo mĂ£
+   // TA�m gọng kA�nh theo mA�
    const handleFrameSearch = () => {
       const frame = inventory.find(i =>
          i.category === 'frame' &&
@@ -287,18 +295,18 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          let duplicate = null;
 
          if (newItem.category === 'lens') {
-            // Tr?ng kï¿½nh: ki?m tra m? + tï¿½n + SPH + CYL + ADD + chi?t su?t
+            // Tr?ng k�nh: ki?m tra m? + t�n + SPH + CYL + ADD + chi?t su?t
             duplicate = existingItems.find(item =>
                item.category === 'lens' &&
                item.code === newItem.code &&
                item.name === newItem.name &&
-               String(item.specs?.sph || '') === String(newItem.specs?.sph || '') &&
-               String(item.specs?.cyl || '') === String(newItem.specs?.cyl || '') &&
+               String(formatDiopter(item.specs?.sph) || '') === String(newformatDiopter(item.specs?.sph) || '') &&
+               String(formatDiopter(item.specs?.cyl) || '') === String(newformatDiopter(item.specs?.cyl) || '') &&
                String(item.specs?.add || '') === String(newItem.specs?.add || '') &&
                (item.specs?.material || '') === (newItem.specs?.material || '')
             );
          } else if (newItem.category === 'frame') {
-            // G?ng kï¿½nh: ki?m tra m? + tï¿½n + ch?t li?u
+            // G?ng k�nh: ki?m tra m? + t�n + ch?t li?u
             duplicate = existingItems.find(item =>
                item.category === 'frame' &&
                item.code === newItem.code &&
@@ -306,7 +314,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                (item.specs?.material || '') === (newItem.specs?.material || '')
             );
          } else if (newItem.category === 'medicine') {
-            // Thu?c: ki?m tra m? + tï¿½n
+            // Thu?c: ki?m tra m? + t�n
             duplicate = existingItems.find(item =>
                item.category === 'medicine' &&
                item.code === newItem.code &&
@@ -491,7 +499,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                                 <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
                                                 <div className="text-gray-400">Kho: {lens.quantity}</div>
 
-                                                {/* Nút tăng giảm số lượng */}
+                                                {/* N�t tang gi?m s? lu?ng */}
                                                 <div className="flex items-center justify-between mt-2 border-t pt-2">
                                                    {qty === 0 ? (
                                                       <button
@@ -543,7 +551,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                                 <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
                                                 <div className="text-gray-400">Kho: {lens.quantity}</div>
 
-                                                {/* Nút tăng giảm số lượng */}
+                                                {/* N�t tang gi?m s? lu?ng */}
                                                 <div className="flex items-center justify-between mt-2 border-t pt-2">
                                                    {qty === 0 ? (
                                                       <button
@@ -839,7 +847,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  </td>
                                  <td className="p-3">{item.price.toLocaleString()}</td>
                                  <td className="p-3 text-xs text-gray-500">
-                                    {item.category === 'lens' && `SPH: ${item.specs?.sph} | CYL: ${item.specs?.cyl}${item.specs?.add ? ` | ADD: ${item.specs.add}` : ''} | ${item.specs?.material || ''}`}
+                                    {item.category === 'lens' && `SPH: ${formatDiopter(item.specs?.sph)} | CYL: ${item.specs?.cyl}${item.specs?.add ? ` | ADD: ${item.specs.add}` : ''} | ${item.specs?.material || ''}`}
                                     {item.category === 'frame' && `${item.specs?.material || ''}`}
                                     {item.category === 'medicine' && `${item.specs?.type || ''}`}
                                  </td>
@@ -905,7 +913,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         </div>
                      </div>
 
-                     {/* Tï¿½n hï¿½ng hï¿½a - full width v?i g?i ? */}
+                     {/* T�n h�ng h�a - full width v?i g?i ? */}
                      <div className="relative">
                         <label className="block text-sm font-medium mb-1">Ten hang hoa *</label>
                         <input
@@ -942,7 +950,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         )}
                      </div>
 
-                     {/* M? hï¿½ng */}
+                     {/* M? h�ng */}
                      <div>
                         <label className="block text-sm font-medium mb-1">Ma hang (Code) *</label>
                         <input className="w-full border rounded p-2" value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="VD: LENS01, FRAME001..." />
@@ -1008,7 +1016,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                     type="text"
                                     inputMode="decimal"
                                     placeholder="VD: +1.50"
-                                    value={newItem.specs.add ?? ''}
+                                    value={newformatDiopter(item.specs.add) ?? ''}
                                     onChange={e => {
                                        const val = e.target.value;
                                        setNewItem({ ...newItem, specs: { ...newItem.specs, add: val } });
@@ -1052,7 +1060,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          {activeTab === 'invoices' && (
             <div className="bg-white rounded-xl shadow-sm p-6 flex-1 overflow-y-auto">
                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold text-gray-800">đŸ“ Lich Su Hoa Don & Thong Ke Doanh Thu</h3>
+                  <h3 className="text-xl font-bold text-gray-800">d��? Lich Su Hoa Don & Thong Ke Doanh Thu</h3>
                </div>
 
                {/* Filter & Stats */}
@@ -1196,7 +1204,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                   <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl">
                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold">đŸ“‹ Chi Tiet Hoa Don</h3>
+                        <h3 className="text-xl font-bold">d��� Chi Tiet Hoa Don</h3>
                         <button onClick={() => setViewingInvoice(null)} className="text-gray-500 hover:text-gray-800">
                            <X size={24} />
                         </button>
@@ -1267,7 +1275,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                   <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold">âœï¿½  Sua Hoa Don</h3>
+                        <h3 className="text-xl font-bold">✏�  Sua Hoa Don</h3>
                         <button onClick={() => setEditingInvoice(null)} className="text-gray-500 hover:text-gray-800">
                            <X size={24} />
                         </button>
@@ -1361,7 +1369,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          {/* Hidden Print Area for Invoice */}
          {printingInvoice && (
             <div className="print-area hidden print:block" style={{ width: '58mm', fontFamily: 'Arial, sans-serif', fontSize: '10px', padding: '2mm' }}>
-               {/* Header - Thông tin phòng khám */}
+               {/* Header - Th�ng tin ph�ng kh�m */}
                <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '3mm', marginBottom: '3mm' }}>
                   <div style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase' }}>{settings.name || 'PHONG KHAM MAT'}</div>
                   {settings.doctorName && <div style={{ fontSize: '9px' }}>{settings.doctorName}</div>}
@@ -1369,7 +1377,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                   <div style={{ fontWeight: 'bold', marginTop: '3mm', fontSize: '11px' }}>HOA DON BAN LE</div>
                </div>
 
-               {/* Thông tin hóa đơn */}
+               {/* Th�ng tin h�a don */}
                <div style={{ marginBottom: '3mm', fontSize: '9px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                      <span>{printingInvoice.date ? new Date(printingInvoice.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''}</span>
@@ -1379,7 +1387,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                   {printingInvoice.patientPhone && <div>SDT: {printingInvoice.patientPhone}</div>}
                </div>
 
-               {/* Chi tiết sản phẩm */}
+               {/* Chi ti?t s?n ph?m */}
                <div style={{ borderTop: '1px dashed black', borderBottom: '1px dashed black', paddingTop: '2mm', paddingBottom: '2mm' }}>
                   {printingInvoice.items?.map((item: any, idx: number) => (
                      <div key={idx} style={{ marginBottom: '2mm', fontSize: '9px' }}>
@@ -1392,7 +1400,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                   ))}
                </div>
 
-               {/* Tổng tiền */}
+               {/* T?ng ti?n */}
                <div style={{ marginTop: '2mm', fontSize: '9px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                      <span>Tam tinh:</span>

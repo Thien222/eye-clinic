@@ -139,7 +139,7 @@ export const Refraction: React.FC = () => {
     : [];
 
   const startRefraction = (p: Patient) => {
-    const text = `Mời bệnh nhân số ${p.ticketNumber}, ${p.fullName}, vào phòng khúc xạ`;
+    const text = `Mời bệnh nhân số ${String(p.ticketNumber).padStart(3, '0')}`;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'vi-VN';
     window.speechSynthesis.speak(utterance);
@@ -276,7 +276,7 @@ export const Refraction: React.FC = () => {
               onClick={() => handleSelectPatient(p)}
             >
               <div className="flex justify-between items-center mb-1">
-                <span className="font-bold text-lg text-brand-600">#{p.ticketNumber}</span>
+                <span className="font-bold text-lg text-brand-600">#{String(p.ticketNumber).padStart(3, '0')}</span>
                 {(activeTab === 'waiting' || activeTab === 'processing') && (
                   <button
                     onClick={(e) => { e.stopPropagation(); startRefraction(p); }}
@@ -359,7 +359,7 @@ export const Refraction: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-4 gap-2 mb-1 text-xs font-bold text-gray-500 text-center">
                   <div className="text-left pl-2">Mắt</div>
-                  <div>Độ cầu (SPH)</div>
+                  <div>Độ cận/viễn (SPH)</div>
                   <div>Độ loạn (CYL)</div>
                   <div>Trục (AXIS)</div>
                 </div>
@@ -372,7 +372,7 @@ export const Refraction: React.FC = () => {
                 <h4 className="font-bold text-blue-800 mb-3">2. Khúc xạ Chủ quan (Subj. Refraction)</h4>
                 <div className="grid grid-cols-5 gap-2 mb-1 text-xs font-bold text-gray-500 text-center">
                   <div className="text-left pl-2">Mắt</div>
-                  <div>Độ cầu (SPH)</div>
+                  <div>Độ cận/viễn (SPH)</div>
                   <div>Độ loạn (CYL)</div>
                   <div>Trục (AXIS)</div>
                   <div>Thị lực (BCVA)</div>
@@ -520,7 +520,7 @@ export const Refraction: React.FC = () => {
                     <tr>
                       <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
                       <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cầu/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
+                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cận/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(AXIS)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Thị lực</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(BCVA)</i></th>
@@ -528,7 +528,7 @@ export const Refraction: React.FC = () => {
                   </thead>
                   <tbody>
                     <tr>
-                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px' }}>
+                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px', whiteSpace: 'nowrap' }}>
                         <b>Khúc xạ khách quan</b><br /><i style={{ fontSize: '10px' }}>(Skiascopy)</i>
                         {data.skiascopy.cycloplegia && <><br /><span style={{ color: 'red', fontSize: '9px' }}>- Có liệt điều tiết -</span></>}
                       </td>
@@ -571,7 +571,7 @@ export const Refraction: React.FC = () => {
                     <tr>
                       <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
                       <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cầu/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
+                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cận/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Thị lực</b></th>

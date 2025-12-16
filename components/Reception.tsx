@@ -174,7 +174,7 @@ export const Reception: React.FC = () => {
               const status = getStatusLabel(p.status);
               return (
                 <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="p-3 font-bold text-brand-600">{p.ticketNumber}</td>
+                  <td className="p-3 font-bold text-brand-600">{String(p.ticketNumber).padStart(3, '0')}</td>
                   <td className="p-3">{p.fullName}</td>
                   <td className="p-3">{p.dob}</td>
                   <td className="p-3 text-sm">
@@ -475,7 +475,7 @@ export const Reception: React.FC = () => {
           <div className="print-ticket">
             <div className="clinic-name">PHÒNG KHÁM MẮT NGOÀI GIỜ</div>
             <div className="doctor-name">BSCKII. Hứa Trung Kiên</div>
-            <div className="ticket-number">{lastPrintedTicket.number}</div>
+            <div className="ticket-number">{String(lastPrintedTicket.number).padStart(3, '0')}</div>
             <div className="patient-name">{lastPrintedTicket.name}</div>
             <div className="ticket-note">Khách hàng vui lòng chờ đến STT</div>
             <div className="ticket-date">Phiếu có hiệu lực trong ngày {formattedDate}</div>
