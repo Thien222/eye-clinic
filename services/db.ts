@@ -1,4 +1,4 @@
-﻿import { Patient, InventoryItem, Invoice, ClinicSettings } from '../types';
+import { Patient, InventoryItem, Invoice, ClinicSettings } from '../types';
 
 // Initial Mock Data
 const INITIAL_INVENTORY: InventoryItem[] = [
@@ -6,23 +6,26 @@ const INITIAL_INVENTORY: InventoryItem[] = [
   { id: '2', code: 'LENS002', category: 'lens', name: 'Chemi U2', specs: { sph: -2.00, cyl: -0.50, material: '1.60', type: 'single' }, costPrice: 120000, price: 180000, quantity: 7, minStock: 10, image: 'https://picsum.photos/100/100' },
   { id: '3', code: 'LENS003', category: 'lens', name: 'Hoya BlueControl', specs: { sph: -4.00, cyl: 0, material: '1.67', type: 'single' }, costPrice: 550000, price: 850000, quantity: 20, minStock: 5 },
   { id: '4', code: 'FRAME001', category: 'frame', name: 'Rayban Aviator', specs: { material: 'Metal' }, costPrice: 900000, price: 1500000, quantity: 12, minStock: 3 },
-  { id: '5', code: 'FRAME002', category: 'frame', name: 'Nhá»±a Dáº»o HĂ n Quá»‘c', specs: { material: 'Plastic' }, costPrice: 150000, price: 300000, quantity: 100, minStock: 20 },
+  { id: '5', code: 'FRAME002', category: 'frame', name: 'Nhựa Dẻo HA�n Quốc', specs: { material: 'Plastic' }, costPrice: 150000, price: 300000, quantity: 100, minStock: 20 },
   { id: '6', code: 'MED001', category: 'medicine', name: 'V.Rohto', costPrice: 35000, price: 50000, quantity: 200, minStock: 50 },
   { id: '7', code: 'MED002', category: 'medicine', name: 'Tobradex', costPrice: 60000, price: 85000, quantity: 40, minStock: 10 },
   { id: '8', code: 'MED003', category: 'medicine', name: 'Systane Ultra', costPrice: 85000, price: 120000, quantity: 30, minStock: 10 },
+  { id: '9', code: 'LENS004', category: 'lens', name: 'Plano Blue Light', specs: { sph: 0, cyl: 0, material: '1.56', type: 'single' }, costPrice: 150000, price: 250000, quantity: 25, minStock: 5 },
+  { id: '10', code: 'LENS005', category: 'lens', name: 'Plano Anti-Glare', specs: { sph: 0, cyl: -0.50, material: '1.61', type: 'single' }, costPrice: 200000, price: 320000, quantity: 15, minStock: 5 },
+  { id: '11', code: 'LENS006', category: 'lens', name: 'Plano UV Protection', specs: { sph: 0, cyl: -1.00, material: '1.67', type: 'single' }, costPrice: 280000, price: 450000, quantity: 10, minStock: 3 },
 ];
 
 const DEFAULT_SETTINGS: ClinicSettings = {
-  name: 'PhĂ²ng KhĂ¡m Máº¯t NgoĂ i Giá»',
+  name: 'PhA�ng KhA�m Mắt NgoA�i Giờ',
   adminPassword: 'admin123',
-  address: 'VÄ©nh Thuáº­n - KiĂªn Giang',
+  address: 'Vĩnh Thuận - KiA�n Giang',
   phone: '0917416421',
   email: 'huatrungkien@gmail.com',
   printTemplates: {
-    receiptHeader: 'HĂ“A ÄÆ N BĂN Láºº',
-    receiptFooter: 'Cáº£m Æ¡n quĂ½ khĂ¡ch vĂ  háº¹n gáº·p láº¡i!\nVui lĂ²ng giá»¯ láº¡i hĂ³a Ä‘Æ¡n Ä‘á»ƒ báº£o hĂ nh.',
-    prescriptionHeader: 'ÄÆ N KĂNH THUá»C',
-    prescriptionFooter: 'BĂ¡c sÄ© / KTV KhĂºc Xáº¡'
+    receiptHeader: 'HA�A ĐƠN BA�N LẺ',
+    receiptFooter: 'Cảm ơn quA� khA�ch vA� hẹn gặp lại!\nVui lA�ng giữ lại hA�a đơn để bảo hA�nh.',
+    prescriptionHeader: 'ĐƠN KA�NH THUỐC',
+    prescriptionFooter: 'BA�c sĩ / KTV KhA�c Xạ'
   }
 };
 
@@ -112,7 +115,7 @@ class DatabaseService {
       if (data.invoices) localStorage.setItem(this.invoicesKey, JSON.stringify(data.invoices));
       if (data.settings) localStorage.setItem(this.settingsKey, JSON.stringify(data.settings));
 
-      // QUAN TRỌNG: Push ngay lên server sau khi restore để tránh bị sync ngược
+      // QUAN TR?NG: Push ngay l�n server sau khi restore d? tr�nh b? sync ngu?c
       this.pushToServer();
       console.log('[DB] Imported data and pushed to server');
 
@@ -154,10 +157,10 @@ class DatabaseService {
   getNextTicketNumber(): number {
     const today = new Date().toDateString();
     const stored = localStorage.getItem(this.ticketKey);
-    let data = stored ? JSON.parse(stored) : { date: today, count: 100 };
+    let data = stored ? JSON.parse(stored) : { date: today, count: 0 };
 
     if (data.date !== today) {
-      data = { date: today, count: 100 };
+      data = { date: today, count: 0 };
     }
 
     const ticket = data.count + 1;
