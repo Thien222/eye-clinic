@@ -11,6 +11,7 @@ export const Reception: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [showAllPatients, setShowAllPatients] = useState(false); // Toggle xem tất cả bệnh nhân
 
   // Service type: 'refraction' = Cắt kính, 'doctor' = Khám mắt
   const [serviceType, setServiceType] = useState<'refraction' | 'doctor'>('refraction');
@@ -107,10 +108,25 @@ export const Reception: React.FC = () => {
     }, 200);
   };
 
-  const filteredPatients = patients.filter(p =>
-    p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.phone.includes(searchTerm)
-  );
+  // Lọc bệnh nhân theo ngày hiện tại (trừ khi showAllPatients = true)
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const endOfToday = startOfToday + 24 * 60 * 60 * 1000;
+
+  const filteredPatients = patients.filter(p => {
+    // Lọc theo tên/SĐT
+    const matchesSearch = p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.phone.includes(searchTerm);
+
+    // Lọc theo ngày (chỉ khi không xem tất cả)
+    const matchesDate = showAllPatients || (p.timestamp >= startOfToday && p.timestamp < endOfToday);
+
+    return matchesSearch && matchesDate;
+  });
+
+  const todayPatientCount = patients.filter(p =>
+    p.timestamp >= startOfToday && p.timestamp < endOfToday
+  ).length;
 
   const getStatusLabel = (status: Patient['status']) => {
     switch (status) {
@@ -124,19 +140,37 @@ export const Reception: React.FC = () => {
     }
   };
 
-  const today = new Date();
   const formattedDate = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Tiếp Tân & Bốc Số</h2>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-brand-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-brand-700"
-        >
-          <Plus size={20} /> Bệnh Nhân Mới
-        </button>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Tiếp Tân & Bốc Số</h2>
+          <p className="text-sm text-gray-500">
+            {showAllPatients
+              ? `Đang hiển thị tất cả ${patients.length} bệnh nhân`
+              : `Hôm nay: ${todayPatientCount} bệnh nhân`
+            }
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAllPatients(!showAllPatients)}
+            className={`px-3 py-2 rounded-lg flex items-center gap-2 font-medium ${showAllPatients
+                ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+          >
+            {showAllPatients ? '📅 Chỉ hôm nay' : '📋 Xem tất cả'}
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-brand-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-brand-700"
+          >
+            <Plus size={20} /> Bệnh Nhân Mới
+          </button>
+        </div>
       </div>
 
       {/* Patient List */}

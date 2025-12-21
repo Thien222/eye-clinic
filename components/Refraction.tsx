@@ -139,7 +139,7 @@ export const Refraction: React.FC = () => {
     : [];
 
   const startRefraction = (p: Patient) => {
-    const text = `Mời bệnh nhân số ${p.ticketNumber}, ${p.fullName}, vào phòng khúc xạ`;
+    const text = `Mời bệnh nhân số ${p.ticketNumber} vào phòng khúc xạ`;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'vi-VN';
     window.speechSynthesis.speak(utterance);
@@ -528,7 +528,7 @@ export const Refraction: React.FC = () => {
                   </thead>
                   <tbody>
                     <tr>
-                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px' }}>
+                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px', whiteSpace: 'nowrap' }}>
                         <b>Khúc xạ khách quan</b><br /><i style={{ fontSize: '10px' }}>(Skiascopy)</i>
                         {data.skiascopy.cycloplegia && <><br /><span style={{ color: 'red', fontSize: '9px' }}>- Có liệt điều tiết -</span></>}
                       </td>
@@ -536,17 +536,17 @@ export const Refraction: React.FC = () => {
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.sph}</td>
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.cyl}</td>
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center' }}></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', position: 'relative', background: 'linear-gradient(to top right, transparent calc(50% - 1px), #999 calc(50% - 1px), #999 calc(50% + 1px), transparent calc(50% + 1px))' }}></td>
                     </tr>
                     <tr>
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt trái <i>(OS)</i></td>
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.sph}</td>
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.cyl}</td>
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center' }}></td>
+                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', position: 'relative', background: 'linear-gradient(to top right, transparent calc(50% - 1px), #999 calc(50% - 1px), #999 calc(50% + 1px), transparent calc(50% + 1px))' }}></td>
                     </tr>
                     <tr>
-                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px' }}>
+                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px', whiteSpace: 'nowrap' }}>
                         <b>Khúc xạ chủ quan</b><br /><i style={{ fontSize: '10px' }}>(Subj. refraction)</i>
                       </td>
                       <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt phải <i>(OD)</i></td>

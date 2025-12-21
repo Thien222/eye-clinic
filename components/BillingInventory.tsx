@@ -3,6 +3,7 @@ import { db } from '../services/db';
 import { Patient, InventoryItem } from '../types';
 import { Search, Printer, Plus, Edit, X, Save, FilePlus, Glasses, Eye, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { InvoicePrint } from './InvoicePrint';
 
 // UUID generator that works on HTTP
 const generateId = () => 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
@@ -59,7 +60,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       price: 0,
       quantity: 0,
       minStock: 5,
-      specs: { sph: '', cyl: '', add: '', material: '', type: 'single' }
+      specs: { sph: '', cyl: '', add: '', material: '', type: 'single', note: '' }
    });
    const [nameSuggestions, setNameSuggestions] = useState<InventoryItem[]>([]);
    const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -344,7 +345,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       setShowAddItem(false);
       setNewItem({
          category: 'lens', name: '', code: '', costPrice: 0, price: 0, quantity: 0, minStock: 5,
-         specs: { sph: '', cyl: '', add: '', material: '', type: 'single' }
+         specs: { sph: '', cyl: '', add: '', material: '', type: 'single', note: '' }
       });
       refreshData();
    };
@@ -488,6 +489,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                                 <div className="font-bold text-gray-800">{lens.name}</div>
                                                 <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
                                                 {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
+                                                {lens.specs?.note && <div className="text-blue-600 text-[10px] mt-1 truncate" title={lens.specs.note}>📝 {lens.specs.note}</div>}
                                                 <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
                                                 <div className="text-gray-400">Kho: {lens.quantity}</div>
 
@@ -540,6 +542,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                                 <div className="font-bold text-gray-800">{lens.name}</div>
                                                 <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
                                                 {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
+                                                {lens.specs?.note && <div className="text-blue-600 text-[10px] mt-1 truncate" title={lens.specs.note}>📝 {lens.specs.note}</div>}
                                                 <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
                                                 <div className="text-gray-400">Kho: {lens.quantity}</div>
 
@@ -722,49 +725,17 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                   )}
                </div>
 
-               {/* Hidden Print Receipt - Thermal 50mm */}
+               {/* Hidden Print Area - Tách biệt component in hóa đơn */}
                <div className="print-area">
                   {selectedPatient && (
-                     <div className="print-thermal">
-                        <h2 className="text-center font-bold uppercase mb-1" style={{ fontSize: '11px' }}>PHONG KHAM MAT NGOAI GIO</h2>
-                        <p className="text-center text-xs mb-1">BSCKII. Hua Trung Kien</p>
-                        <p className="text-center text-xs mb-2">DT: 0917416421</p>
-                        <div className="border-t border-dashed my-1"></div>
-                        <h3 className="text-center font-bold uppercase mb-2" style={{ fontSize: '12px' }}>HOA DON BAN LE</h3>
-                        <p className="text-xs mb-1">{new Date().toLocaleString('vi-VN')}</p>
-                        <p className="text-xs mb-2">KH: {selectedPatient.fullName}</p>
-                        <div className="border-t border-dashed my-1"></div>
-                        {cart.map((c, i) => (
-                           <div key={i} className="flex justify-between text-xs mb-1" style={{ fontSize: '9px' }}>
-                              <span style={{ maxWidth: '60%' }}>{c.qty}x {c.item.name}</span>
-                              <span>{(c.item.price * c.qty).toLocaleString()}</span>
-                           </div>
-                        ))}
-                        <div className="border-t border-dashed my-1"></div>
-                        <div className="flex justify-between text-xs">
-                           <span>Tam tinh:</span>
-                           <span>{subtotal.toLocaleString()}</span>
-                        </div>
-                        {extraCharges.surcharge > 0 && (
-                           <div className="flex justify-between text-xs">
-                              <span>Phu thu:</span>
-                              <span>{extraCharges.surcharge.toLocaleString()}</span>
-                           </div>
-                        )}
-                        {extraCharges.discount > 0 && (
-                           <div className="flex justify-between text-xs">
-                              <span>Giam gia:</span>
-                              <span>-{extraCharges.discount.toLocaleString()}</span>
-                           </div>
-                        )}
-                        <div className="border-t border-dashed my-1"></div>
-                        <div className="flex justify-between font-bold" style={{ fontSize: '11px' }}>
-                           <span>TONG CONG:</span>
-                           <span>{finalTotal.toLocaleString()}</span>
-                        </div>
-                        <p className="text-center mt-3 text-xs">Cam on quy khach!</p>
-                        <p className="text-center text-xs">Hen gap lai</p>
-                     </div>
+                     <InvoicePrint
+                        settings={settings}
+                        patient={selectedPatient}
+                        cart={cart}
+                        subtotal={subtotal}
+                        extraCharges={extraCharges}
+                        finalTotal={finalTotal}
+                     />
                   )}
                </div>
             </div>
@@ -806,7 +777,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         setNewItem({
                            category: inventoryCategoryTab,
                            name: '', code: '', costPrice: 0, price: 0, quantity: 0, minStock: 5,
-                           specs: { sph: '', cyl: '', add: '', material: '', type: 'single' }
+                           specs: { sph: '', cyl: '', add: '', material: '', type: 'single', note: '' }
                         });
                         setShowAddItem(true);
                      }}
@@ -839,7 +810,12 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  </td>
                                  <td className="p-3">{item.price.toLocaleString()}</td>
                                  <td className="p-3 text-xs text-gray-500">
-                                    {item.category === 'lens' && `SPH: ${item.specs?.sph} | CYL: ${item.specs?.cyl}${item.specs?.add ? ` | ADD: ${item.specs.add}` : ''} | ${item.specs?.material || ''}`}
+                                    {item.category === 'lens' && (
+                                       <>
+                                          {`SPH: ${item.specs?.sph} | CYL: ${item.specs?.cyl}${item.specs?.add ? ` | ADD: ${item.specs.add}` : ''} | ${item.specs?.material || ''}`}
+                                          {item.specs?.note && <div className="text-blue-600 mt-1">📝 {item.specs.note}</div>}
+                                       </>
+                                    )}
                                     {item.category === 'frame' && `${item.specs?.material || ''}`}
                                     {item.category === 'medicine' && `${item.specs?.type || ''}`}
                                  </td>
@@ -897,7 +873,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  <input
                                     type="radio"
                                     checked={newItem.category === type}
-                                    onChange={() => setNewItem({ ...newItem, category: type, specs: { sph: '', cyl: '', add: '', material: '', type: 'single' } })}
+                                    onChange={() => setNewItem({ ...newItem, category: type, specs: { sph: '', cyl: '', add: '', material: '', type: 'single', note: '' } })}
                                  />
                                  <span className="capitalize">{type === 'lens' ? 'Trong kinh' : type === 'frame' ? 'Gong kinh' : 'Thuoc'}</span>
                               </label>
@@ -1026,6 +1002,15 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                     <option value="bifocal">Hai trong</option>
                                     <option value="pal">Da trong (Progressive)</option>
                                  </select>
+                              </div>
+                              <div className="col-span-2">
+                                 <label className="text-xs">Ghi chu (do kinh bo sung...)</label>
+                                 <input
+                                    className="border rounded w-full p-1"
+                                    placeholder="VD: Do kinh -2.50 den -4.00, trong loc anh sang xanh..."
+                                    value={newItem.specs.note ?? ''}
+                                    onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, note: e.target.value } })}
+                                 />
                               </div>
                            </div>
                         </div>

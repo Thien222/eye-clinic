@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/db';
 import { ClinicSettings } from '../types';
-import { Save, Download, Upload, Settings as SettingsIcon, Printer, Database, FileText, Clock, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock } from 'lucide-react';
+import { Save, Download, Upload, Settings as SettingsIcon, Printer, Database, FileText, Clock, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock, Zap } from 'lucide-react';
+import { getSeedData } from '../services/seedData';
 
 type SettingsTab = 'general' | 'vat' | 'invoice' | 'ticket' | 'refraction' | 'backup' | 'security';
 
@@ -238,6 +239,33 @@ export const Settings: React.FC = () => {
       }
     };
     reader.readAsText(file);
+  };
+
+  // Load dữ liệu test
+  const handleLoadSeedData = () => {
+    if (!confirm('\u26a0\ufe0f BẠN CÓ CHẮC MUỐN LOAD DỮ LIỆU TEST?\n\nHành động này sẽ:\n- Thêm 25 loại tròng kính\n- Thêm 16 loại gọng kính\n- Thêm 15 loại thuốc mắt\n- Tạo 50 bệnh nhân mẫu\n- Tạo 80 hóa đơn ở nhiều tháng khác nhau\n\nDữ liệu hiện tại sẽ được GHI ĐÈ!')) return;
+
+    try {
+      const seedData = getSeedData();
+      const currentSettings = db.getSettings();
+
+      // Import data
+      const dataToImport = {
+        patients: seedData.patients,
+        inventory: seedData.inventory,
+        invoices: seedData.invoices,
+        settings: currentSettings
+      };
+
+      if (db.importData(JSON.stringify(dataToImport))) {
+        alert(`\u2705 ĐÃ LOAD DỮ LIỆU TEST THÀNH CÔNG!\n\n\ud83d\udc53 Tròng kính: ${seedData.inventory.filter((i: any) => i.category === 'lens').length} loại\n\ud83e\udd7d Gọng kính: ${seedData.inventory.filter((i: any) => i.category === 'frame').length} loại\n\ud83d\udc8a Thuốc: ${seedData.inventory.filter((i: any) => i.category === 'medicine').length} loại\n\ud83d\udc65 Bệnh nhân: ${seedData.patients.length} người\n\ud83e\uddfe Hóa đơn: ${seedData.invoices.length} đơn\n\nTrang sẽ tải lại...`);
+        window.location.reload();
+      } else {
+        alert('\u274c Lỗi khi load dữ liệu test!');
+      }
+    } catch (error: any) {
+      alert(`\u274c Lỗi: ${error.message}`);
+    }
   };
 
   const tabs = [
@@ -530,6 +558,24 @@ export const Settings: React.FC = () => {
                 <span className="text-xs text-gray-500">Chọn file .json để khôi phục</span>
                 <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleRestore} />
               </label>
+            </div>
+
+            {/* Load Test Data */}
+            <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-6">
+              <h3 className="font-bold text-purple-800 mb-2 flex items-center gap-2">
+                <Zap size={20} /> Load Dữ Liệu Test (Demo)
+              </h3>
+              <p className="text-sm text-purple-600 mb-4">
+                Load dữ liệu mẫu để test hệ thống: bao gồm nhiều loại tròng kính, gọng kính, thuốc mắt, bệnh nhân và hóa đơn ở nhiều tháng khác nhau.
+              </p>
+              <button
+                onClick={handleLoadSeedData}
+                className="bg-purple-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-purple-700 flex items-center gap-2 shadow-lg"
+              >
+                <Zap size={18} />
+                Load Dữ Liệu Test
+              </button>
+              <p className="text-xs text-purple-500 mt-2">⚠️ Cảnh báo: Dữ liệu hiện tại sẽ bị ghi đè!</p>
             </div>
 
             {/* Auto Backup Config */}

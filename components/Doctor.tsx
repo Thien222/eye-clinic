@@ -22,7 +22,7 @@ export const Doctor: React.FC = () => {
   };
 
   const callPatient = (p: Patient) => {
-    const text = `Mời bệnh nhân số ${p.ticketNumber}, ${p.fullName}, vào phòng khám mắt`;
+    const text = `Mời bệnh nhân số ${p.ticketNumber} vào phòng khám mắt`;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'vi-VN';
     window.speechSynthesis.speak(utterance);
@@ -86,8 +86,8 @@ export const Doctor: React.FC = () => {
             <div
               key={p.id}
               className={`p-4 rounded-lg border cursor-pointer transition-all ${selectedPatient?.id === p.id
-                  ? 'bg-brand-50 border-brand-500 ring-2 ring-brand-500'
-                  : 'hover:bg-gray-50'
+                ? 'bg-brand-50 border-brand-500 ring-2 ring-brand-500'
+                : 'hover:bg-gray-50'
                 } ${p.status === 'processing_doctor' ? 'border-blue-400 bg-blue-50' : ''}`}
               onClick={() => setSelectedPatient(p)}
             >
