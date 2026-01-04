@@ -1,17 +1,23 @@
 @echo off
-title Eye Clinic Management Server
-color 0A
-cls
-echo ==================================================
-echo      EYE CLINIC MANAGEMENT PRO - SERVER
-echo ==================================================
+title Eye Clinic Pro - Server
 echo.
-echo [INFO] Starting Database and Web Server...
-echo [INFO] Please do not close this window while using.
+echo ========================================
+echo   Eye Clinic Pro - Starting Server...
+echo ========================================
 echo.
 
-start http://localhost:3001
+:: Check if node_modules exists
+if not exist "node_modules" (
+    echo Installing dependencies...
+    call npm install
+    echo.
+)
 
-"%~dp0bin\node.exe" "%~dp0server.js"
+:: Start server
+echo Starting Eye Clinic Server...
+echo.
+echo Access the app at: http://localhost:3001
+echo.
+node sync-server.cjs
 
 pause

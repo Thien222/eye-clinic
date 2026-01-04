@@ -4,19 +4,22 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"node backup-server.js\"",
+    "dev": "concurrently \"vite\" \"node sync-server.cjs\"",
     "dev:frontend": "vite",
-    "dev:backup": "node backup-server.js",
+    "dev:server": "node sync-server.cjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node sync-server.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "dexie": "^4.2.1",
     "express": "^5.2.1",
     "lucide-react": "^0.556.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "react-router-dom": "^7.10.1"
+    "react-router-dom": "^7.10.1",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

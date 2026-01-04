@@ -1,0 +1,50 @@
+{
+  "patients": [],
+  "inventory": [],
+  "invoices": [],
+  "settings": {
+    "name": "Phòng khám mắt",
+    "doctorName": "BSCKII. Hứa Trung Kiên",
+    "address": "Vĩnh Thuận ",
+    "phone": "0917416421",
+    "email": "huatrungkien@gmail.com",
+    "workingHours": "Từ 8h đến 19h, Thứ hai đến Chủ nhật",
+    "vat": {
+      "enabled": false,
+      "rate": 10
+    },
+    "invoice": {
+      "header": "HÓA ĐƠN BÁN LẺ",
+      "footer": "Cảm ơn quý khách!",
+      "showLogo": false
+    },
+    "ticket": {
+      "header": "PHÒNG KHÁM MẮT NGOÀI GIỜ",
+      "subHeader": "BSCKII. Hứa Trung Kiên",
+      "note": "Khách hàng vui lòng chờ đến STT",
+      "footer": "Phiếu có hiệu lực trong ngày"
+    },
+    "refraction": {
+      "header": "PHÒNG KHÁM MẮT NGOÀI GIỜ",
+      "rightHeader": "KHÁM KHÚC XẠ",
+      "disclaimer1": "Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghỉ của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.",
+      "disclaimer2": "Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng."
+    },
+    "backup": {
+      "path": "D:\\backup",
+      "maxFiles": 10,
+      "autoBackupOnClose": true,
+      "autoBackupInterval": 4
+    },
+    "printTemplates": {
+      "receiptHeader": "HA�A ĐƠN BA�N LẺ",
+      "receiptFooter": "Cảm ơn quA� khA�ch vA� hẹn gặp lại!\nVui lA�ng giữ lại hA�a đơn để bảo hA�nh.",
+      "prescriptionHeader": "ĐƠN KA�NH THUỐC",
+      "prescriptionFooter": "BA�c sĩ / KTV KhA�c Xạ"
+    },
+    "adminPassword": "admin123",
+    "id": "main"
+  },
+  "backupTime": "2025-12-22T22:37:22.500Z",
+  "backupReason": "server_start"
+}

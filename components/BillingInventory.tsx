@@ -8,6 +8,14 @@ import { InvoicePrint } from './InvoicePrint';
 // UUID generator that works on HTTP
 const generateId = () => 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
 
+// Helper: Hien thi SPH = 0 thanh "Plano"
+const formatSPH = (sph: any): string => {
+   if (sph === 0 || sph === '0' || sph === 0.00 || sph === '0.00') return 'Plano';
+   if (typeof sph === 'string' && sph.toLowerCase() === 'plano') return 'Plano';
+   if (sph === undefined || sph === null || sph === '') return '-';
+   return String(sph);
+};
+
 interface BillingInventoryProps {
    activeTab?: 'billing' | 'inventory' | 'invoices';
 }
@@ -134,15 +142,23 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          const odAdd = parseFloat(p.refraction.finalRx.od.add || '0') || 0;
 
          const matchesOD = inv.filter(item => {
-            const itemSph = item.specs?.sph || 0;
-            const itemCyl = item.specs?.cyl || 0;
-            const itemAdd = item.specs?.add || 0;
+            // Parse SPH - xu ly Plano (0 do)
+            let itemSph = 0;
+            if (item.specs?.sph !== undefined) {
+               if (typeof item.specs.sph === 'string' && item.specs.sph.toLowerCase() === 'plano') {
+                  itemSph = 0;
+               } else {
+                  itemSph = parseFloat(String(item.specs.sph)) || 0;
+               }
+            }
+            const itemCyl = parseFloat(String(item.specs?.cyl || 0)) || 0;
+            const itemAdd = parseFloat(String(item.specs?.add || 0)) || 0;
 
-            // Kiá»ƒm tra Ä‘á»™ cáº§u (SPH) chĂªnh lá»‡ch <= 0.25
+            // Kiem tra do cau (SPH) chenh lech <= 0.25
             const sphMatch = Math.abs(itemSph - odSph) <= 0.25;
-            // Kiá»ƒm tra Ä‘á»™ loáº¡n (CYL) chĂªnh lá»‡ch <= 0.25
+            // Kiem tra do loan (CYL) chenh lech <= 0.25
             const cylMatch = Math.abs(itemCyl - odCyl) <= 0.25;
-            // Kiá»ƒm tra ADD náº¿u cĂ³
+            // Kiem tra ADD neu co
             const addMatch = odAdd === 0 || (itemAdd !== undefined && Math.abs(itemAdd - odAdd) <= 0.25);
 
             return sphMatch && cylMatch && addMatch && item.quantity > 0;
@@ -154,9 +170,17 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          const osAdd = parseFloat(p.refraction.finalRx.os.add || '0') || 0;
 
          const matchesOS = inv.filter(item => {
-            const itemSph = item.specs?.sph || 0;
-            const itemCyl = item.specs?.cyl || 0;
-            const itemAdd = item.specs?.add || 0;
+            // Parse SPH - xu ly Plano (0 do)
+            let itemSph = 0;
+            if (item.specs?.sph !== undefined) {
+               if (typeof item.specs.sph === 'string' && item.specs.sph.toLowerCase() === 'plano') {
+                  itemSph = 0;
+               } else {
+                  itemSph = parseFloat(String(item.specs.sph)) || 0;
+               }
+            }
+            const itemCyl = parseFloat(String(item.specs?.cyl || 0)) || 0;
+            const itemAdd = parseFloat(String(item.specs?.add || 0)) || 0;
 
             const sphMatch = Math.abs(itemSph - osSph) <= 0.25;
             const cylMatch = Math.abs(itemCyl - osCyl) <= 0.25;
@@ -379,10 +403,22 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       }, 100);
    };
 
-   const filteredInventory = inventory.filter(i =>
-      i.name.toLowerCase().includes(searchInv.toLowerCase()) ||
-      i.code.toLowerCase().includes(searchInv.toLowerCase())
-   );
+   const filteredInventory = inventory.filter(i => {
+      const searchLower = searchInv.toLowerCase();
+      const nameMatch = i.name.toLowerCase().includes(searchLower);
+      const codeMatch = i.code.toLowerCase().includes(searchLower);
+
+      // Ho tro tim kiem Plano: "plano" hoac "0" match voi trong 0 do
+      let planoMatch = false;
+      if (i.category === 'lens' && (searchLower === 'plano' || searchLower === '0')) {
+         const sph = i.specs?.sph;
+         if (sph === 0 || sph === '0' || (typeof sph === 'string' && sph.toLowerCase() === 'plano')) {
+            planoMatch = true;
+         }
+      }
+
+      return nameMatch || codeMatch || planoMatch;
+   });
 
    const subtotal = cart.reduce((s, c) => s + (c.item.price * c.qty), 0);
    const finalTotal = Math.max(0, subtotal + extraCharges.surcharge - extraCharges.discount);
@@ -487,7 +523,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                                 className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs"
                                              >
                                                 <div className="font-bold text-gray-800">{lens.name}</div>
-                                                <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
+                                                <div className="text-gray-500">SPH: {formatSPH(lens.specs?.sph)} | CYL: {lens.specs?.cyl}</div>
                                                 {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
                                                 {lens.specs?.note && <div className="text-blue-600 text-[10px] mt-1 truncate" title={lens.specs.note}>📝 {lens.specs.note}</div>}
                                                 <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
@@ -540,7 +576,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                                 className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs"
                                              >
                                                 <div className="font-bold text-gray-800">{lens.name}</div>
-                                                <div className="text-gray-500">SPH: {lens.specs?.sph} | CYL: {lens.specs?.cyl}</div>
+                                                <div className="text-gray-500">SPH: {formatSPH(lens.specs?.sph)} | CYL: {lens.specs?.cyl}</div>
                                                 {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
                                                 {lens.specs?.note && <div className="text-blue-600 text-[10px] mt-1 truncate" title={lens.specs.note}>📝 {lens.specs.note}</div>}
                                                 <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
@@ -812,7 +848,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  <td className="p-3 text-xs text-gray-500">
                                     {item.category === 'lens' && (
                                        <>
-                                          {`SPH: ${item.specs?.sph} | CYL: ${item.specs?.cyl}${item.specs?.add ? ` | ADD: ${item.specs.add}` : ''} | ${item.specs?.material || ''}`}
+                                          {`SPH: ${formatSPH(item.specs?.sph)} | CYL: ${item.specs?.cyl}${item.specs?.add ? ` | ADD: ${item.specs.add}` : ''} | ${item.specs?.material || ''}`}
                                           {item.specs?.note && <div className="text-blue-600 mt-1">📝 {item.specs.note}</div>}
                                        </>
                                     )}
@@ -1041,7 +1077,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                </div>
 
                {/* Filter & Stats */}
-               <div className="grid grid-cols-4 gap-4 mb-6">
+               <div className="grid grid-cols-3 gap-4 mb-6">
                   <div>
                      <label className="block text-sm font-medium mb-1">Tim kiem</label>
                      <input
@@ -1060,18 +1096,6 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         value={invoiceMonth}
                         onChange={e => setInvoiceMonth(e.target.value)}
                      />
-                  </div>
-                  <div className="bg-green-50 p-3 rounded border border-green-200">
-                     <div className="text-xs text-green-600">Doanh thu thang</div>
-                     <div className="text-xl font-bold text-green-700">
-                        {invoices
-                           .filter(inv => {
-                              const d = new Date(inv.date);
-                              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === invoiceMonth;
-                           })
-                           .reduce((sum, inv) => sum + inv.total, 0)
-                           .toLocaleString()} d
-                     </div>
                   </div>
                   <div className="bg-blue-50 p-3 rounded border border-blue-200">
                      <div className="text-xs text-blue-600">Tong hoa don thang</div>

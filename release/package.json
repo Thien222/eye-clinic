@@ -1,12 +1,14 @@
 {
-  "name": "eyeclinic-server",
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.22.1"
-  }
+    "name": "eyeclinic-server",
+    "version": "1.0.0",
+    "description": "Eye Clinic Management - Production Server",
+    "main": "sync-server.cjs",
+    "scripts": {
+        "start": "node sync-server.cjs"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "socket.io": "^4.7.5",
+        "cors": "^2.8.5"
+    }
 }

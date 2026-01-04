@@ -115,12 +115,12 @@ const PATIENT_NAMES = [
 const REASONS = ['Cắt kính', 'Khám mắt', 'Nhức mắt, mờ', 'Đau mắt đỏ', 'Tái khám', 'Thay kính mới', 'Kiểm tra định kỳ'];
 
 // Hàm tạo bệnh nhân với timestamp ở các tháng khác nhau
-export function generatePatients(count: number = 50): any[] {
+export function generatePatients(count: number = 100): any[] {
     const patients: any[] = [];
     const now = new Date();
 
     for (let i = 0; i < count; i++) {
-        const monthsAgo = Math.floor(Math.random() * 6); // 0-5 tháng trước
+        const monthsAgo = Math.floor(Math.random() * 12); // 0-11 tháng trước
         const daysAgo = Math.floor(Math.random() * 28);
         const timestamp = new Date(now.getFullYear(), now.getMonth() - monthsAgo, now.getDate() - daysAgo,
             8 + Math.floor(Math.random() * 10), Math.floor(Math.random() * 60)).getTime();
@@ -152,7 +152,7 @@ export function generatePatients(count: number = 50): any[] {
 }
 
 // Hàm tạo hóa đơn với timestamp ở các tháng khác nhau
-export function generateInvoices(patients: any[], inventory: any[], count: number = 80): any[] {
+export function generateInvoices(patients: any[], inventory: any[], count: number = 250): any[] {
     const invoices: any[] = [];
     const now = new Date();
     const lenses = inventory.filter((i: any) => i.category === 'lens');
@@ -160,10 +160,12 @@ export function generateInvoices(patients: any[], inventory: any[], count: numbe
     const medicines = inventory.filter((i: any) => i.category === 'medicine');
 
     for (let i = 0; i < count; i++) {
-        const monthsAgo = Math.floor(Math.random() * 6); // 0-5 tháng trước
+        const monthsAgo = Math.floor(Math.random() * 12); // 0-11 tháng trước
         const daysAgo = Math.floor(Math.random() * 28);
+        // Thêm variation theo giờ trong ngày
+        const hour = 8 + Math.floor(Math.random() * 10); // 8AM - 6PM
         const date = new Date(now.getFullYear(), now.getMonth() - monthsAgo, now.getDate() - daysAgo,
-            8 + Math.floor(Math.random() * 10), Math.floor(Math.random() * 60)).getTime();
+            hour, Math.floor(Math.random() * 60)).getTime();
 
         const patient = patients[Math.floor(Math.random() * patients.length)];
         const items: any[] = [];
@@ -227,8 +229,8 @@ export function generateInvoices(patients: any[], inventory: any[], count: numbe
 // Export function để seed data
 export function getSeedData() {
     const inventory = [...SEED_LENSES, ...SEED_FRAMES, ...SEED_MEDICINES];
-    const patients = generatePatients(50);
-    const invoices = generateInvoices(patients, inventory, 80);
+    const patients = generatePatients(100);
+    const invoices = generateInvoices(patients, inventory, 250);
 
     return {
         inventory,
@@ -236,3 +238,4 @@ export function getSeedData() {
         invoices
     };
 }
+

@@ -71,12 +71,13 @@ export interface InventoryItem {
   category: 'lens' | 'frame' | 'medicine';
   name: string; // Manufacturer for lenses
   specs?: {
-    sph?: number;
-    cyl?: number;
-    add?: number;
+    sph?: string | number;
+    cyl?: string | number;
+    add?: string | number;
     material?: string; // 1.56, 1.61, etc.
     coating?: string;
     type?: string; // Single, Bifocal, PAL
+    note?: string; // Ghi chú bổ sung
   };
   costPrice: number; // Giá nhập
   price: number; // Giá bán

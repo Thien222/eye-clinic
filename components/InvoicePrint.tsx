@@ -18,90 +18,84 @@ export const InvoicePrint: React.FC<InvoicePrintProps> = ({
     extraCharges,
     finalTotal,
 }) => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString('vi-VN');
+
     return (
         <div className="invoice-print">
-            {/* Header Phòng Khám */}
-            <div style={{ textAlign: 'center', marginBottom: '3mm' }}>
-                <div style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                    {settings.name || "PHÒNG KHÁM MẮT NGOÀI GIỜ"}
-                </div>
-                <div style={{ fontWeight: 'bold' }}>{settings.doctorName || "BSCKII. Hứa Trung Kiên"}</div>
-                <div>ĐT: {settings.phone || "0917416421"}</div>
+            {/* Header */}
+            <div className="invoice-header">
+                <div className="clinic-name">{settings.name || "PHONG KHAM MAT NGOAI GIO"}</div>
+                <div className="doctor-name">{settings.doctorName || "BSCKII. Hua Trung Kien"}</div>
+                <div className="clinic-phone">DT: {settings.phone || "0917416421"}</div>
             </div>
 
-            <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', margin: '2mm 0' }}>
-                HÓA ĐƠN BÁN LẺ
+            <div className="invoice-title">HOA DON BAN LE</div>
+
+            {/* Thong tin khach hang */}
+            <div className="invoice-info">
+                <div className="invoice-datetime">
+                    <span>{timeStr}</span>
+                    <span>{dateStr}</span>
+                </div>
+                <div className="invoice-customer">
+                    <div><strong>KH:</strong> {patient.fullName}</div>
+                    {patient.phone && <div><strong>SDT:</strong> {patient.phone}</div>}
+                </div>
             </div>
 
-            {/* Thông tin khách hàng */}
-            <div style={{ marginBottom: '2mm', borderBottom: '1px dashed black', paddingBottom: '2mm' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
-                    <span>{new Date().toLocaleTimeString('vi-VN')}</span>
-                    <span>{new Date().toLocaleDateString('vi-VN')}</span>
-                </div>
-                <div style={{ marginTop: '1mm' }}>
-                    <strong>KH:</strong> {patient.fullName}
-                </div>
-                {patient.phone && (
-                    <div><strong>SĐT:</strong> {patient.phone}</div>
-                )}
-            </div>
+            <div className="invoice-divider"></div>
 
-            {/* Danh sách sản phẩm */}
-            <div style={{ marginBottom: '2mm' }}>
+            {/* Danh sach san pham */}
+            <div className="invoice-items">
                 {cart.map((c, i) => (
-                    <div key={i} style={{ marginBottom: '2mm' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-                            <span style={{ marginRight: '1mm' }}>{i + 1}.</span>
-                            <span style={{ fontWeight: '500', flex: 1 }}>{c.item.name}</span>
-                            <span style={{ fontWeight: 'bold' }}>{(c.item.price * c.qty).toLocaleString()}</span>
+                    <div key={i} className="invoice-item">
+                        <div className="item-line">
+                            <span className="item-num">{i + 1}.</span>
+                            <span className="item-name">{c.item.name}</span>
                         </div>
-                        <div style={{ paddingLeft: '4mm', fontSize: '9px', color: '#333', fontStyle: 'italic' }}>
-                            {c.qty} x {c.item.price.toLocaleString()}đ
+                        <div className="item-detail">
+                            <span className="item-qty">{c.qty} x {c.item.price.toLocaleString()}d</span>
+                            <span className="item-total">{(c.item.price * c.qty).toLocaleString()}</span>
                         </div>
                     </div>
                 ))}
             </div>
 
-            {/* Phần tính tiền */}
-            <div style={{ borderTop: '1px dashed black', paddingTop: '2mm' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Tạm tính:</span>
+            <div className="invoice-divider"></div>
+
+            {/* Phan tinh tien */}
+            <div className="invoice-summary">
+                <div className="summary-row">
+                    <span>Tam tinh:</span>
                     <span>{subtotal.toLocaleString()}</span>
                 </div>
 
                 {extraCharges.surcharge > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Phụ thu:</span>
+                    <div className="summary-row">
+                        <span>Phu thu:</span>
                         <span>+{extraCharges.surcharge.toLocaleString()}</span>
                     </div>
                 )}
 
                 {extraCharges.discount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Giảm giá:</span>
+                    <div className="summary-row">
+                        <span>Giam gia:</span>
                         <span>-{extraCharges.discount.toLocaleString()}</span>
                     </div>
                 )}
 
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontWeight: 'bold',
-                    fontSize: '14px',
-                    marginTop: '2mm',
-                    borderTop: '1px solid black',
-                    paddingTop: '1mm'
-                }}>
-                    <span>TỔNG CỘNG:</span>
+                <div className="summary-total">
+                    <span>TONG CONG:</span>
                     <span>{finalTotal.toLocaleString()}</span>
                 </div>
             </div>
 
             {/* Footer */}
-            <div style={{ textAlign: 'center', marginTop: '5mm', fontSize: '9px' }}>
-                <div style={{ fontStyle: 'italic' }}>Cảm ơn quý khách!</div>
-                <div style={{ fontStyle: 'italic' }}>Hẹn gặp lại</div>
+            <div className="invoice-footer">
+                <div>Cam on quy khach!</div>
+                <div>Hen gap lai</div>
             </div>
         </div>
     );

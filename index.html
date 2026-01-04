@@ -34,6 +34,117 @@
       background-color: #f3f4f6;
     }
 
+    /* ============ RESPONSIVE MOBILE-FIRST ============ */
+
+    /* Mobile base styles */
+    @media screen and (max-width: 640px) {
+
+      /* Navigation - stack vertically on mobile */
+      .mobile-nav {
+        flex-direction: column !important;
+        padding: 0.5rem !important;
+      }
+
+      .mobile-nav>* {
+        width: 100% !important;
+        margin-bottom: 0.25rem !important;
+      }
+
+      /* Cards - full width */
+      .mobile-card {
+        width: 100% !important;
+        margin: 0.5rem 0 !important;
+      }
+
+      /* Tables - horizontal scroll */
+      .mobile-table-wrapper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* Smaller fonts */
+      .mobile-text-sm {
+        font-size: 0.875rem !important;
+      }
+
+      /* Form inputs - larger touch targets */
+      input,
+      select,
+      button {
+        min-height: 44px !important;
+        font-size: 16px !important;
+        /* Prevents iOS zoom */
+      }
+
+      /* Hide sidebar on mobile */
+      .sidebar-desktop {
+        display: none !important;
+      }
+
+      /* Full width main content */
+      .main-content-mobile {
+        margin-left: 0 !important;
+        width: 100% !important;
+      }
+
+      /* Stack flex items vertically */
+      .flex-mobile-col {
+        flex-direction: column !important;
+      }
+
+      /* Padding adjustments */
+      .p-mobile {
+        padding: 0.75rem !important;
+      }
+
+      /* Larger buttons for touch */
+      .btn-mobile {
+        padding: 0.75rem 1rem !important;
+        font-size: 1rem !important;
+      }
+    }
+
+    /* Tablet styles */
+    @media screen and (min-width: 641px) and (max-width: 1024px) {
+      .sidebar-tablet {
+        width: 60px !important;
+      }
+
+      .sidebar-tablet .nav-text {
+        display: none !important;
+      }
+    }
+
+    /* Desktop styles - default */
+    @media screen and (min-width: 1025px) {
+      .sidebar-desktop {
+        width: 200px;
+      }
+    }
+
+    /* Smooth transitions */
+    .transition-responsive {
+      transition: all 0.3s ease;
+    }
+
+    /* Touch-friendly spacing */
+    .touch-spacing>* {
+      margin-bottom: 0.5rem;
+    }
+
+    /* Better scrolling on mobile */
+    .mobile-scroll {
+      -webkit-overflow-scrolling: touch;
+      overflow-y: auto;
+    }
+
+    /* Safe area for notched phones */
+    .safe-area {
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
     /* Normal screen - hide print areas */
     .print-area {
       display: none !important;
@@ -97,21 +208,19 @@
       }
 
       .print-area {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: flex-start !important;
+        display: block !important;
         position: fixed !important;
         left: 0 !important;
         top: 0 !important;
         right: 0 !important;
-        bottom: 0 !important;
         width: 100% !important;
         height: auto !important;
         background: white !important;
         z-index: 99999 !important;
         margin: 0 !important;
-        padding: 10mm !important;
+        padding: 5mm !important;
         box-sizing: border-box !important;
+        text-align: center !important;
       }
 
       /* Thermal Receipt for Ticket (57mm x 50mm) */
@@ -177,19 +286,163 @@
         margin: 0 auto;
       }
 
-      /* Invoice Print - Riêng biệt cho hóa đơn */
+      /* Invoice Print - Rieng biet cho hoa don (58mm thermal) */
       .invoice-print {
         width: 58mm !important;
         max-width: 58mm !important;
-        padding: 2mm !important;
+        padding: 3mm !important;
         font-size: 10px !important;
-        line-height: 1.2 !important;
-        font-family: Arial, sans-serif !important;
+        line-height: 1.4 !important;
+        font-family: 'Arial', sans-serif !important;
         color: black !important;
         background: white !important;
         margin: 0 auto !important;
         display: block !important;
+        text-align: left !important;
+        clear: both !important;
       }
+
+      .invoice-print * {
+        position: static !important;
+      }
+
+      .invoice-print>div {
+        display: block !important;
+        clear: both !important;
+      }
+
+      .invoice-print span {
+        display: inline !important;
+      }
+
+      .invoice-print .invoice-header {
+        text-align: center;
+        margin-bottom: 2mm;
+      }
+
+      .invoice-print .clinic-name {
+        font-size: 11px;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+
+      .invoice-print .doctor-name {
+        font-size: 10px;
+        font-weight: bold;
+      }
+
+      .invoice-print .clinic-phone {
+        font-size: 9px;
+      }
+
+      .invoice-print .invoice-title {
+        text-align: center;
+        font-weight: bold;
+        font-size: 12px;
+        margin: 2mm 0;
+        border-top: 1px dashed black;
+        border-bottom: 1px dashed black;
+        padding: 1mm 0;
+      }
+
+      .invoice-print .invoice-info {
+        margin-bottom: 2mm;
+      }
+
+      .invoice-print .invoice-datetime {
+        font-size: 9px;
+        margin-bottom: 1mm;
+      }
+
+      .invoice-print .invoice-datetime span {
+        margin-right: 3mm;
+      }
+
+      .invoice-print .invoice-customer {
+        font-size: 10px;
+      }
+
+      .invoice-print .invoice-divider {
+        border-top: 1px dashed black;
+        margin: 2mm 0;
+      }
+
+      .invoice-print .invoice-items {
+        margin-bottom: 2mm;
+      }
+
+      .invoice-print .invoice-item {
+        margin-bottom: 2mm;
+      }
+
+      .invoice-print .item-line {
+        font-size: 10px;
+      }
+
+      .invoice-print .item-num {
+        margin-right: 1mm;
+      }
+
+      .invoice-print .item-name {
+        font-weight: 500;
+      }
+
+      .invoice-print .item-detail {
+        padding-left: 3mm;
+        font-size: 9px;
+        color: #333;
+      }
+
+      .invoice-print .item-detail .item-qty {
+        margin-right: 2mm;
+      }
+
+      .invoice-print .item-detail .item-total {
+        font-weight: bold;
+      }
+
+      .invoice-print .invoice-summary {
+        margin-top: 2mm;
+      }
+
+      .invoice-print .summary-row {
+        font-size: 10px;
+        margin-bottom: 1mm;
+        overflow: hidden;
+      }
+
+      .invoice-print .summary-row span:first-child {
+        float: left !important;
+      }
+
+      .invoice-print .summary-row span:last-child {
+        float: right !important;
+      }
+
+      .invoice-print .summary-total {
+        font-size: 12px;
+        font-weight: bold;
+        border-top: 1px solid black;
+        padding-top: 1mm;
+        margin-top: 1mm;
+        overflow: hidden;
+      }
+
+      .invoice-print .summary-total span:first-child {
+        float: left !important;
+      }
+
+      .invoice-print .summary-total span:last-child {
+        float: right !important;
+      }
+
+      .invoice-print .invoice-footer {
+        text-align: center;
+        margin-top: 3mm;
+        font-size: 9px;
+        font-style: italic;
+      }
+
 
       /* A5 Portrait for Refraction Sheet */
       .print-a5 {

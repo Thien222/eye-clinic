@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/db';
 import { ClinicSettings } from '../types';
-import { Save, Download, Upload, Settings as SettingsIcon, Printer, Database, FileText, Clock, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock, Zap } from 'lucide-react';
-import { getSeedData } from '../services/seedData';
+import { Save, Download, Upload, Settings as SettingsIcon, Printer, Database, FileText, Clock, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock } from 'lucide-react';
 
 type SettingsTab = 'general' | 'vat' | 'invoice' | 'ticket' | 'refraction' | 'backup' | 'security';
 
@@ -66,11 +65,48 @@ export const Settings: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // Function to load settings from db
+  const loadSettingsFromDb = () => {
     const saved = db.getSettings();
     if (saved) {
-      setSettings({ ...settings, ...saved });
+      // Deep merge to preserve nested settings like backup path
+      setSettings(prev => ({
+        ...prev,
+        ...saved,
+        backup: {
+          ...prev.backup,
+          ...saved.backup
+        },
+        refraction: {
+          ...prev.refraction,
+          ...saved.refraction
+        },
+        invoice: {
+          ...prev.invoice,
+          ...saved.invoice
+        },
+        ticket: {
+          ...prev.ticket,
+          ...saved.ticket
+        },
+        vat: {
+          ...prev.vat,
+          ...saved.vat
+        }
+      }));
     }
+  };
+
+  useEffect(() => {
+    loadSettingsFromDb();
+
+    // Listen for data updates from server
+    const handleDbUpdate = () => {
+      loadSettingsFromDb();
+    };
+
+    window.addEventListener('clinic-db-updated', handleDbUpdate);
+    return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
   }, []);
 
   // Load backups when switching to backup tab
@@ -82,19 +118,50 @@ export const Settings: React.FC = () => {
 
   const loadBackupsFromDisk = async () => {
     try {
-      const backupPath = settings.backup?.path || 'D:\\testbackup';
-      const response = await fetch(`/api/backups?path=${encodeURIComponent(backupPath)}`);
+      // Load from default server backup folder first (no path = use server default)
+      const response = await fetch('/api/backups');
       const result = await response.json();
+
+      let allRecords: BackupRecord[] = [];
+
       if (result.success && result.files) {
-        const records: BackupRecord[] = result.files.map((f: any) => ({
+        allRecords = result.files.map((f: any) => ({
           id: f.path,
           filename: f.filename,
           date: f.date,
           size: f.size,
           path: f.path
         }));
-        setBackupHistory(records);
       }
+
+      // Also try to load from custom path if set and different from default
+      const customPath = settings.backup?.path;
+      if (customPath) {
+        try {
+          const customResponse = await fetch(`/api/backups?path=${encodeURIComponent(customPath)}`);
+          const customResult = await customResponse.json();
+          if (customResult.success && customResult.files) {
+            const customRecords = customResult.files.map((f: any) => ({
+              id: f.path,
+              filename: f.filename,
+              date: f.date,
+              size: f.size,
+              path: f.path
+            }));
+            // Merge and deduplicate by path
+            const existingPaths = new Set(allRecords.map(r => r.path));
+            customRecords.forEach((r: BackupRecord) => {
+              if (!existingPaths.has(r.path)) {
+                allRecords.push(r);
+              }
+            });
+          }
+        } catch (e) { /* custom path not accessible */ }
+      }
+
+      // Sort by date descending
+      allRecords.sort((a, b) => b.date - a.date);
+      setBackupHistory(allRecords);
     } catch (error) {
       console.log('Backup server not running');
       // Load from localStorage as fallback
@@ -241,32 +308,7 @@ export const Settings: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // Load dữ liệu test
-  const handleLoadSeedData = () => {
-    if (!confirm('\u26a0\ufe0f BẠN CÓ CHẮC MUỐN LOAD DỮ LIỆU TEST?\n\nHành động này sẽ:\n- Thêm 25 loại tròng kính\n- Thêm 16 loại gọng kính\n- Thêm 15 loại thuốc mắt\n- Tạo 50 bệnh nhân mẫu\n- Tạo 80 hóa đơn ở nhiều tháng khác nhau\n\nDữ liệu hiện tại sẽ được GHI ĐÈ!')) return;
 
-    try {
-      const seedData = getSeedData();
-      const currentSettings = db.getSettings();
-
-      // Import data
-      const dataToImport = {
-        patients: seedData.patients,
-        inventory: seedData.inventory,
-        invoices: seedData.invoices,
-        settings: currentSettings
-      };
-
-      if (db.importData(JSON.stringify(dataToImport))) {
-        alert(`\u2705 ĐÃ LOAD DỮ LIỆU TEST THÀNH CÔNG!\n\n\ud83d\udc53 Tròng kính: ${seedData.inventory.filter((i: any) => i.category === 'lens').length} loại\n\ud83e\udd7d Gọng kính: ${seedData.inventory.filter((i: any) => i.category === 'frame').length} loại\n\ud83d\udc8a Thuốc: ${seedData.inventory.filter((i: any) => i.category === 'medicine').length} loại\n\ud83d\udc65 Bệnh nhân: ${seedData.patients.length} người\n\ud83e\uddfe Hóa đơn: ${seedData.invoices.length} đơn\n\nTrang sẽ tải lại...`);
-        window.location.reload();
-      } else {
-        alert('\u274c Lỗi khi load dữ liệu test!');
-      }
-    } catch (error: any) {
-      alert(`\u274c Lỗi: ${error.message}`);
-    }
-  };
 
   const tabs = [
     { id: 'general' as const, label: 'Thông tin chung', icon: SettingsIcon },
@@ -560,23 +602,7 @@ export const Settings: React.FC = () => {
               </label>
             </div>
 
-            {/* Load Test Data */}
-            <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-6">
-              <h3 className="font-bold text-purple-800 mb-2 flex items-center gap-2">
-                <Zap size={20} /> Load Dữ Liệu Test (Demo)
-              </h3>
-              <p className="text-sm text-purple-600 mb-4">
-                Load dữ liệu mẫu để test hệ thống: bao gồm nhiều loại tròng kính, gọng kính, thuốc mắt, bệnh nhân và hóa đơn ở nhiều tháng khác nhau.
-              </p>
-              <button
-                onClick={handleLoadSeedData}
-                className="bg-purple-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-purple-700 flex items-center gap-2 shadow-lg"
-              >
-                <Zap size={18} />
-                Load Dữ Liệu Test
-              </button>
-              <p className="text-xs text-purple-500 mt-2">⚠️ Cảnh báo: Dữ liệu hiện tại sẽ bị ghi đè!</p>
-            </div>
+
 
             {/* Auto Backup Config */}
             <div className="bg-gray-50 rounded-lg p-6 space-y-4">
@@ -618,9 +644,17 @@ export const Settings: React.FC = () => {
 
             {/* History List */}
             <div className="bg-white border rounded-lg p-6">
-              <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-4">
-                <FolderOpen size={18} /> Lịch Sử Sao Lưu ({backupHistory.length})
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                  <FolderOpen size={18} /> Lịch Sử Sao Lưu ({backupHistory.length})
+                </h3>
+                <button
+                  onClick={loadBackupsFromDisk}
+                  className="text-sm text-brand-600 hover:text-brand-800 flex items-center gap-1"
+                >
+                  🔄 Làm mới
+                </button>
+              </div>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {backupHistory.map((record, index) => (
                   <div key={record.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">

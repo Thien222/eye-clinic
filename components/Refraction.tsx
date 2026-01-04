@@ -487,7 +487,7 @@ export const Refraction: React.FC = () => {
                     <span><b>Ngày sinh:</b> {selectedPatient.dob}</span>
                     <span><b>SĐT:</b> {selectedPatient.phone}</span>
                   </div>
-                  <div><b>Địa chỉ:</b> {selectedPatient.address}</div>
+                  <div style={{ textAlign: 'left' }}><b>Địa chỉ:</b> {selectedPatient.address}</div>
                 </div>
 
                 {/* Table 1: UCVA - Thị lực không kính */}
@@ -520,7 +520,7 @@ export const Refraction: React.FC = () => {
                     <tr>
                       <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
                       <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cầu/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
+                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Cận/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(AXIS)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Thị lực</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(BCVA)</i></th>
@@ -571,7 +571,7 @@ export const Refraction: React.FC = () => {
                     <tr>
                       <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
                       <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ cầu/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
+                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Cận/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b></th>
                       <th style={{ border: '1px solid black', padding: '2px' }}><b>Thị lực</b></th>
@@ -614,9 +614,9 @@ export const Refraction: React.FC = () => {
                 </table>
 
                 {/* Ghi chú */}
-                <div style={{ marginBottom: '3mm' }}>
+                <div style={{ marginBottom: '3mm', textAlign: 'left' }}>
                   <b>Ghi chú:</b>
-                  <div style={{ minHeight: '12mm', borderBottom: '1px solid black', paddingTop: '2mm' }}>{data.note}</div>
+                  <div style={{ minHeight: '12mm', borderBottom: '1px solid black', paddingTop: '2mm', textAlign: 'left' }}>{data.note}</div>
                 </div>
 
                 {/* Lưu ý */}
