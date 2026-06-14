@@ -11,35 +11,33 @@
     tailwind.config = {
       theme: {
         extend: {
-          fontFamily: {
-            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
-          },
           colors: {
             brand: {
-              50: '#f0fdfa',
-              100: '#ccfbf1',
-              200: '#99f6e4',
-              300: '#5eead4',
-              400: '#2dd4bf',
-              500: '#14b8a6',
-              600: '#0d9488',
-              700: '#0f766e',
-              800: '#115e59',
-              900: '#134e4a',
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
             }
-          },
-          boxShadow: {
-            soft: '0 1px 3px rgba(15,23,42,0.06), 0 4px 12px rgba(15,23,42,0.04)',
-            card: '0 1px 2px rgba(15,23,42,0.05), 0 8px 24px rgba(15,23,42,0.06)',
           }
         }
       }
     }
   </script>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f3f4f6;
+    }
+
     /* ============ RESPONSIVE MOBILE-FIRST ============ */
 
     /* Mobile base styles */
+
     @media screen and (max-width: 640px) {
 
       /* Navigation - stack vertically on mobile */
@@ -108,6 +106,7 @@
     }
 
     /* Tablet styles */
+
     @media screen and (min-width: 641px) and (max-width: 1024px) {
       .sidebar-tablet {
         width: 60px !important;
@@ -119,6 +118,7 @@
     }
 
     /* Desktop styles - default */
+
     @media screen and (min-width: 1025px) {
       .sidebar-desktop {
         width: 200px;
@@ -126,22 +126,26 @@
     }
 
     /* Smooth transitions */
+
     .transition-responsive {
       transition: all 0.3s ease;
     }
 
     /* Touch-friendly spacing */
+
     .touch-spacing>* {
       margin-bottom: 0.5rem;
     }
 
     /* Better scrolling on mobile */
+
     .mobile-scroll {
       -webkit-overflow-scrolling: touch;
       overflow-y: auto;
     }
 
     /* Safe area for notched phones */
+
     .safe-area {
       padding-left: env(safe-area-inset-left);
       padding-right: env(safe-area-inset-right);
@@ -149,11 +153,13 @@
     }
 
     /* Normal screen - hide print areas */
+
     .print-area {
       display: none !important;
     }
 
     /* Print Specific Styles */
+
     @media print {
       @page {
         margin: 5mm;
@@ -548,6 +554,8 @@
       }
     }
   </style>
+
+  <link rel="stylesheet" href="/index.css">
   <script type="importmap">
 {
   "imports": {
@@ -559,12 +567,11 @@
   }
 }
 </script>
-  <link rel="stylesheet" href="/index.css">
+  <script type="module" crossorigin src="/assets/index-BuigN5n3.js"></script>
 </head>
 
 <body>
-  <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
+  <div id="root"></div>
 </body>
 
 </html>

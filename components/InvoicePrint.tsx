@@ -26,12 +26,15 @@ export const InvoicePrint: React.FC<InvoicePrintProps> = ({
         <div className="invoice-print">
             {/* Header */}
             <div className="invoice-header">
-                <div className="clinic-name">{settings.name || "PHONG KHAM MAT NGOAI GIO"}</div>
-                <div className="doctor-name">{settings.doctorName || "BSCKII. Hua Trung Kien"}</div>
-                <div className="clinic-phone">DT: {settings.phone || "0917416421"}</div>
+                {settings.logoUrl && settings.invoice?.showLogo !== false && (
+                    <img src={settings.logoUrl} alt="Logo" style={{ maxHeight: '15mm', margin: '0 auto 2mm', display: 'block' }} />
+                )}
+                <div className="clinic-name">{settings.name || "PHÒNG KHÁM MẮT NGOÀI GIỜ"}</div>
+                <div className="doctor-name">{settings.doctorName || ""}</div>
+                <div className="clinic-phone">DT: {settings.phone || ""}{settings.address ? ` | ${settings.address}` : ""}</div>
             </div>
 
-            <div className="invoice-title">HOA DON BAN LE</div>
+            <div className="invoice-title">{settings.invoice?.header || settings.printTemplates?.receiptHeader || "HOA DON BAN LE"}</div>
 
             {/* Thong tin khach hang */}
             <div className="invoice-info">
@@ -94,8 +97,7 @@ export const InvoicePrint: React.FC<InvoicePrintProps> = ({
 
             {/* Footer */}
             <div className="invoice-footer">
-                <div>Cam on quy khach!</div>
-                <div>Hen gap lai</div>
+                <div>{settings.invoice?.footer || settings.printTemplates?.receiptFooter || "Cam on quy khach!"}</div>
             </div>
         </div>
     );

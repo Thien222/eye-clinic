@@ -1,26 +1,55 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
-import { Invoice, InventoryItem } from '../types';
-import { TrendingUp, DollarSign, Package, ShoppingCart, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
+import { getLocalDateString } from '../services/utils';
+import { Invoice, InventoryItem, Patient } from '../types';
+import { TrendingUp, DollarSign, Package, ShoppingCart, Calendar, ArrowUp, ArrowDown, Printer, FileSpreadsheet } from 'lucide-react';
+import { exportStatisticsExcel } from '../services/excelExport';
+import { PageHeader } from './ui/PageHeader';
+import { Button } from './ui/Button';
 
 export const Statistics: React.FC = () => {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
+    const [patients, setPatients] = useState<Patient[]>([]);
+    const [periodType, setPeriodType] = useState<'day' | 'week' | 'month'>('month');
     const [selectedMonth, setSelectedMonth] = useState<string>(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+    const [printMode, setPrintMode] = useState(false);
+    const settings = db.getSettings();
 
-    useEffect(() => {
+    const refreshData = () => {
         setInvoices(db.getInvoices());
         setInventory(db.getInventory());
+        setPatients(db.getPatients());
+    };
+
+    useEffect(() => {
+        refreshData();
+        const handleDbUpdate = () => refreshData();
+        window.addEventListener('clinic-db-updated', handleDbUpdate);
+        return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
     }, []);
 
-    // Filter invoices by month
-    const filteredInvoices = invoices.filter(inv => {
-        const d = new Date(inv.date);
+    const isInPeriod = (timestamp: number) => {
+        const d = new Date(timestamp);
+        const now = new Date();
+        if (periodType === 'day') return getLocalDateString(d) === getLocalDateString(now);
+        if (periodType === 'week') {
+            const weekAgo = new Date(now);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return d >= weekAgo;
+        }
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === selectedMonth;
-    });
+    };
+
+    const filteredInvoices = useMemo(() => invoices.filter(inv => isInPeriod(inv.date)), [invoices, periodType, selectedMonth]);
+
+    const refractionPatients = useMemo(() =>
+        patients.filter(p => p.refraction && isInPeriod(p.timestamp)),
+        [patients, periodType, selectedMonth]
+    );
 
     // Calculate statistics
     const totalRevenue = filteredInvoices.reduce((sum, inv) => sum + inv.total, 0);
@@ -43,17 +72,26 @@ export const Statistics: React.FC = () => {
         sum + inv.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0
     );
 
-    // Previous month comparison
     const prevMonth = new Date(selectedMonth + '-01');
     prevMonth.setMonth(prevMonth.getMonth() - 1);
     const prevMonthStr = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
-
-    const prevMonthInvoices = invoices.filter(inv => {
+    const prevMonthInvoices = periodType === 'month' ? invoices.filter(inv => {
         const d = new Date(inv.date);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === prevMonthStr;
-    });
+    }) : [];
     const prevRevenue = prevMonthInvoices.reduce((sum, inv) => sum + inv.total, 0);
     const revenueChange = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue * 100) : 0;
+
+    const periodLabel = periodType === 'day' ? 'Hôm nay' : periodType === 'week' ? '7 ngày gần nhất' : `Thang ${selectedMonth}`;
+
+    const handlePrint = () => {
+        setPrintMode(true);
+        setTimeout(() => { window.print(); setPrintMode(false); }, 300);
+    };
+
+    const handleExportExcel = () => {
+        exportStatisticsExcel(periodLabel, refractionPatients, filteredInvoices, inventory);
+    };
 
     // Low stock items
     const lowStockItems = inventory.filter(i => i.quantity <= i.minStock);
@@ -79,91 +117,59 @@ export const Statistics: React.FC = () => {
     });
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    <TrendingUp className="text-brand-600" /> Thống Kê Doanh Thu
-                </h2>
-                <div className="flex items-center gap-3">
-                    <label className="text-sm font-medium">Chọn tháng:</label>
-                    <input
-                        type="month"
-                        className="border rounded-lg px-3 py-2"
-                        value={selectedMonth}
-                        onChange={e => setSelectedMonth(e.target.value)}
-                    />
-                </div>
-            </div>
-
-            {/* Main Stats Cards */}
-            <div className="grid grid-cols-4 gap-6">
-                {/* Revenue */}
-                <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-green-100 text-sm">Tổng Doanh Thu</p>
-                            <p className="text-3xl font-bold mt-1">{totalRevenue.toLocaleString('vi-VN')} đ</p>
-                        </div>
-                        <DollarSign className="opacity-50" size={40} />
-                    </div>
-                    <div className="mt-3 flex items-center gap-1 text-sm">
-                        {revenueChange >= 0 ? (
-                            <><ArrowUp size={14} /> +{revenueChange.toFixed(1)}% so với tháng trước</>
-                        ) : (
-                            <><ArrowDown size={14} /> {revenueChange.toFixed(1)}% so với tháng trước</>
+        <div className="max-w-7xl mx-auto space-y-6">
+            <PageHeader
+                title="Thống kê doanh thu"
+                subtitle={`${filteredInvoices.length} hóa đơn trong kỳ`}
+                actions={
+                    <>
+                        <select className="clinic-input w-auto" value={periodType} onChange={e => setPeriodType(e.target.value as any)}>
+                            <option value="day">Ngày</option>
+                            <option value="week">Tuần</option>
+                            <option value="month">Tháng</option>
+                        </select>
+                        {periodType === 'month' && (
+                            <input type="month" className="clinic-input w-auto" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} />
                         )}
-                    </div>
-                </div>
+                        <Button variant="secondary" size="sm" icon={FileSpreadsheet} onClick={handleExportExcel}>Xuất Excel</Button>
+                        <Button size="sm" icon={Printer} onClick={handlePrint}>In báo cáo</Button>
+                    </>
+                }
+            />
 
-                {/* Profit */}
-                <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-blue-100 text-sm">Lợi Nhuận</p>
-                            <p className="text-3xl font-bold mt-1">{totalProfit.toLocaleString('vi-VN')} đ</p>
-                        </div>
-                        <TrendingUp className="opacity-50" size={40} />
-                    </div>
-                    <div className="mt-3 text-sm text-blue-100">
-                        Tỷ suất: {totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0}%
-                    </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="clinic-card p-5 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-card">
+                    <p className="text-emerald-100 text-sm font-medium">Tổng doanh thu</p>
+                    <p className="text-3xl font-bold mt-1 tabular-nums">{totalRevenue.toLocaleString('vi-VN')} đ</p>
+                    <p className="mt-2 text-sm text-emerald-100 flex items-center gap-1">
+                        {revenueChange >= 0 ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                        {revenueChange >= 0 ? '+' : ''}{revenueChange.toFixed(1)}% so với kỳ trước
+                    </p>
                 </div>
-
-                {/* Invoices Count */}
-                <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-purple-100 text-sm">Số Hóa Đơn</p>
-                            <p className="text-3xl font-bold mt-1">{filteredInvoices.length}</p>
-                        </div>
-                        <ShoppingCart className="opacity-50" size={40} />
-                    </div>
-                    <div className="mt-3 text-sm text-purple-100">
-                        TB: {filteredInvoices.length > 0 ? Math.round(totalRevenue / filteredInvoices.length).toLocaleString('vi-VN') : 0} đ/đơn
-                    </div>
+                <div className="clinic-card p-5 bg-gradient-to-br from-brand-600 to-brand-700 text-white border-0 shadow-card">
+                    <p className="text-brand-100 text-sm font-medium">Lợi nhuận</p>
+                    <p className="text-3xl font-bold mt-1 tabular-nums">{totalProfit.toLocaleString('vi-VN')} đ</p>
+                    <p className="mt-2 text-sm text-brand-100">Tỷ suất: {totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0}%</p>
                 </div>
-
-                {/* Items Sold */}
-                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-5 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-orange-100 text-sm">Sản Phẩm Bán Ra</p>
-                            <p className="text-3xl font-bold mt-1">{totalItemsSold}</p>
-                        </div>
-                        <Package className="opacity-50" size={40} />
-                    </div>
-                    <div className="mt-3 text-sm text-orange-100">
-                        Giảm giá: {totalDiscount.toLocaleString('vi-VN')} đ
-                    </div>
+                <div className="clinic-card p-5 bg-gradient-to-br from-sky-500 to-sky-600 text-white border-0 shadow-card">
+                    <p className="text-sky-100 text-sm font-medium">Số hóa đơn</p>
+                    <p className="text-3xl font-bold mt-1 tabular-nums">{filteredInvoices.length}</p>
+                    <p className="mt-2 text-sm text-sky-100">TB: {filteredInvoices.length > 0 ? Math.round(totalRevenue / filteredInvoices.length).toLocaleString('vi-VN') : 0} đ/đơn</p>
+                </div>
+                <div className="clinic-card p-5 bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-card">
+                    <p className="text-amber-100 text-sm font-medium">Sản phẩm bán ra</p>
+                    <p className="text-3xl font-bold mt-1 tabular-nums">{totalItemsSold}</p>
+                    <p className="mt-2 text-sm text-amber-100">Giảm giá: {totalDiscount.toLocaleString('vi-VN')} đ</p>
                 </div>
             </div>
 
             {/* Secondary Stats */}
             <div className="grid grid-cols-3 gap-6">
                 {/* Cost & Profit Breakdown */}
-                <div className="bg-white rounded-xl shadow-sm p-5">
-                    <h3 className="font-bold text-gray-800 mb-4">📊 Chi Tiết Thu Chi</h3>
+                <div className="clinic-card p-5">
+                    <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                        <TrendingUp size={18} className="text-brand-600" /> Chi tiết thu chi
+                    </h3>
                     <div className="space-y-3">
                         <div className="flex justify-between py-2 border-b">
                             <span className="text-gray-600">Doanh thu gộp:</span>
@@ -189,8 +195,10 @@ export const Statistics: React.FC = () => {
                 </div>
 
                 {/* Top Selling Items */}
-                <div className="bg-white rounded-xl shadow-sm p-5">
-                    <h3 className="font-bold text-gray-800 mb-4">🏆 Top Sản Phẩm Bán Chạy</h3>
+                <div className="clinic-card p-5">
+                    <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                        <Package size={18} className="text-brand-600" /> Top sản phẩm bán chạy
+                    </h3>
                     {topItems.length === 0 ? (
                         <p className="text-gray-400 text-center py-4">Chưa có dữ liệu</p>
                     ) : (
@@ -213,7 +221,7 @@ export const Statistics: React.FC = () => {
                 </div>
 
                 {/* Low Stock Warning */}
-                <div className="bg-white rounded-xl shadow-sm p-5">
+                <div className="clinic-card p-5">
                     <h3 className="font-bold text-gray-800 mb-4">⚠️ Cảnh Báo Tồn Kho</h3>
                     {lowStockItems.length === 0 ? (
                         <div className="text-center py-4">
@@ -235,8 +243,27 @@ export const Statistics: React.FC = () => {
                 </div>
             </div>
 
+            {/* Refraction Stats */}
+            <div className="clinic-card p-5">
+                <h3 className="font-bold text-gray-800 mb-4">👓 Thống Kê Khúc Xạ ({periodLabel})</h3>
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="p-4 bg-blue-50 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-blue-600">{refractionPatients.length}</div>
+                        <div className="text-sm text-gray-600">Bệnh nhân cắt kính</div>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-green-600">{refractionPatients.filter(p => p.status === 'completed').length}</div>
+                        <div className="text-sm text-gray-600">Đã hoàn thành</div>
+                    </div>
+                    <div className="p-4 bg-yellow-50 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-yellow-600">{filteredInvoices.filter(i => i.items.some(it => it.isLens)).length}</div>
+                        <div className="text-sm text-gray-600">Hóa đơn có tròng</div>
+                    </div>
+                </div>
+            </div>
+
             {/* Daily Revenue Table */}
-            <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="clinic-card p-5">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <Calendar size={18} /> Doanh Thu Theo Ngày
                 </h3>
@@ -259,6 +286,53 @@ export const Statistics: React.FC = () => {
                     </div>
                 )}
             </div>
+            {printMode && (
+                <div className="print-area">
+                    <div style={{ fontFamily: 'Arial, sans-serif', padding: '10mm' }}>
+                        <h2 style={{ textAlign: 'center' }}>{settings.name} - Báo cáo thống kê</h2>
+                        <p style={{ textAlign: 'center', fontSize: '12px' }}>{periodLabel} | In lúc: {new Date().toLocaleString('vi-VN')}</p>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginTop: '5mm' }}>
+                            <tbody>
+                                <tr><td style={{ border: '1px solid #ccc', padding: '6px', fontWeight: 'bold' }}>Tổng doanh thu</td><td style={{ border: '1px solid #ccc', padding: '6px' }}>{totalRevenue.toLocaleString()} đ</td></tr>
+                                <tr><td style={{ border: '1px solid #ccc', padding: '6px', fontWeight: 'bold' }}>Lợi nhuận</td><td style={{ border: '1px solid #ccc', padding: '6px' }}>{totalProfit.toLocaleString()} đ</td></tr>
+                                <tr><td style={{ border: '1px solid #ccc', padding: '6px', fontWeight: 'bold' }}>Số hóa đơn</td><td style={{ border: '1px solid #ccc', padding: '6px' }}>{filteredInvoices.length}</td></tr>
+                                <tr><td style={{ border: '1px solid #ccc', padding: '6px', fontWeight: 'bold' }}>Sản phẩm bán ra</td><td style={{ border: '1px solid #ccc', padding: '6px' }}>{totalItemsSold}</td></tr>
+                                <tr><td style={{ border: '1px solid #ccc', padding: '6px', fontWeight: 'bold' }}>BN cắt kính</td><td style={{ border: '1px solid #ccc', padding: '6px' }}>{refractionPatients.length}</td></tr>
+                            </tbody>
+                        </table>
+                        <h3 style={{ marginTop: '8mm', fontSize: '14px' }}>Doanh thu theo ngày</h3>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginTop: '3mm' }}>
+                            <thead><tr style={{ background: '#f3f4f6' }}>
+                                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Ngày</th>
+                                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Doanh thu</th>
+                            </tr></thead>
+                            <tbody>
+                                {Object.entries(dailyRevenue).sort((a, b) => a[0].localeCompare(b[0])).map(([day, rev]) => (
+                                    <tr key={day}><td style={{ border: '1px solid #ccc', padding: '4px' }}>{day}</td>
+                                        <td style={{ border: '1px solid #ccc', padding: '4px' }}>{rev.toLocaleString()} đ</td></tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <h3 style={{ marginTop: '8mm', fontSize: '14px' }}>Top sản phẩm</h3>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginTop: '3mm' }}>
+                            <thead><tr style={{ background: '#f3f4f6' }}>
+                                <th style={{ border: '1px solid #ccc', padding: '4px' }}>#</th>
+                                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Sản phẩm</th>
+                                <th style={{ border: '1px solid #ccc', padding: '4px' }}>SL</th>
+                                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Doanh thu</th>
+                            </tr></thead>
+                            <tbody>
+                                {topItems.map((item, i) => (
+                                    <tr key={i}><td style={{ border: '1px solid #ccc', padding: '4px' }}>{i + 1}</td>
+                                        <td style={{ border: '1px solid #ccc', padding: '4px' }}>{item.name}</td>
+                                        <td style={{ border: '1px solid #ccc', padding: '4px' }}>{item.qty}</td>
+                                        <td style={{ border: '1px solid #ccc', padding: '4px' }}>{item.revenue.toLocaleString()} đ</td></tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

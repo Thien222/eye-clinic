@@ -4,6 +4,14 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const {
+    mergeSyncMeta,
+    applyTombstones,
+    mergePatients,
+    mergeInventory,
+    mergeInvoices,
+    sanitizeData
+} = require('./sync-helpers.cjs');
 
 const app = express();
 const server = http.createServer(app);
@@ -50,8 +58,48 @@ function loadData() {
         patients: [],
         inventory: [],
         invoices: [],
-        settings: null
+        settings: null,
+        syncMeta: { version: 0, lastUpdated: 0, deletedPatientIds: [] }
     };
+}
+
+function mergeClinicData(incoming) {
+    const data = sanitizeData(incoming);
+    const syncMeta = mergeSyncMeta(clinicData.syncMeta, data.syncMeta);
+    const deletedSet = new Set(syncMeta.deletedPatientIds);
+
+    const localSettingsTs = clinicData.settings?.settingsUpdatedAt || 0;
+    const remoteSettingsTs = data.settings?.settingsUpdatedAt || 0;
+    const mergedSettings = remoteSettingsTs >= localSettingsTs
+        ? (data.settings || clinicData.settings)
+        : (clinicData.settings || data.settings);
+
+    const merged = {
+        patients: mergePatients(
+            clinicData.patients,
+            (data.patients || []).filter(p => !deletedSet.has(p.id)),
+            syncMeta.deletedPatientIds
+        ),
+        inventory: mergeInventory(clinicData.inventory, data.inventory),
+        invoices: mergeInvoices(clinicData.invoices, data.invoices),
+        settings: mergedSettings || null,
+        syncMeta
+    };
+    clinicData = applyTombstones(merged);
+    return clinicData;
+}
+
+function persistAndBroadcast(sourceSocket) {
+    clinicData = applyTombstones(clinicData);
+    clinicData.syncMeta.version = (clinicData.syncMeta.version || 0) + 1;
+    clinicData.syncMeta.lastUpdated = Date.now();
+    saveData(clinicData);
+    const payload = applyTombstones(clinicData);
+    if (sourceSocket) {
+        sourceSocket.broadcast.emit('data-updated', payload);
+    } else {
+        io.emit('data-updated', payload);
+    }
 }
 
 // Save data to file
@@ -100,8 +148,8 @@ function createBackup(reason = 'manual') {
         fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
         console.log(`[Backup] ✓ Created: ${filename} -> ${backupDir}`);
 
-        // Clean old backups
-        cleanOldBackups(backupDir, 20);
+        const maxFiles = clinicData?.settings?.backup?.maxFiles || 20;
+        cleanOldBackups(backupDir, maxFiles);
 
         return { success: true, filename, path: backupPath };
     } catch (e) {
@@ -134,8 +182,13 @@ function cleanOldBackups(backupDir, keepCount = 20) {
     }
 }
 
-// In-memory data store
-let clinicData = loadData();
+// In-memory data store — luôn lọc BN đã xóa khi load
+const rawLoaded = loadData();
+let clinicData = applyTombstones(sanitizeData(rawLoaded));
+if (clinicData.patients.length !== (rawLoaded.patients || []).length) {
+    saveData(clinicData);
+    console.log('[Sync] Đã dọn BN đã xóa khỏi database.json');
+}
 
 // Auto backup every 4 hours
 const BACKUP_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
@@ -146,23 +199,78 @@ setInterval(() => {
 
 // REST API endpoints
 app.get('/api/database', (req, res) => {
-    res.json(clinicData);
+    res.json(applyTombstones(clinicData));
 });
 
 app.post('/api/database', (req, res) => {
-    clinicData = req.body;
-    saveData(clinicData);
+    mergeClinicData(req.body);
+    persistAndBroadcast(null);
+    res.json({ success: true, syncMeta: clinicData.syncMeta });
+});
 
-    // Broadcast to all connected clients
-    io.emit('data-updated', clinicData);
+// Xóa BN — ghi ngay vào server (tránh mất khi tắt máy/restart)
+app.post('/api/sync/delete-patient/:id', (req, res) => {
+    const patientId = req.params.id;
+    if (!patientId) return res.status(400).json({ success: false });
 
-    res.json({ success: true });
+    const ids = clinicData.syncMeta.deletedPatientIds || [];
+    if (!ids.includes(patientId)) {
+        clinicData.syncMeta.deletedPatientIds = [...ids, patientId].slice(-5000);
+    }
+    clinicData.patients = (clinicData.patients || []).filter(p => p.id !== patientId);
+    persistAndBroadcast(null);
+    console.log(`[Sync] ✓ Deleted patient ${patientId}, tombstones: ${clinicData.syncMeta.deletedPatientIds.length}`);
+    res.json({ success: true, syncMeta: clinicData.syncMeta });
+});
+
+// Heartbeat — client gửi định kỳ để đảm bảo server có dữ liệu mới nhất
+app.post('/api/sync/heartbeat', (req, res) => {
+    if (req.body && req.body.syncMeta) {
+        clinicData.syncMeta = mergeSyncMeta(clinicData.syncMeta, req.body.syncMeta);
+    }
+    if (req.body && req.body.lastUpdated > (clinicData.syncMeta.lastUpdated || 0)) {
+        mergeClinicData(req.body);
+        persistAndBroadcast(null);
+    }
+    res.json({ success: true, syncMeta: clinicData.syncMeta, serverTime: Date.now() });
+});
+
+// Nạp dữ liệu test
+app.post('/api/test-data/load', (req, res) => {
+    try {
+        const testFile = path.join(__dirname, 'data', 'test-data.json');
+        if (!fs.existsSync(testFile)) {
+            return res.status(404).json({ success: false, message: 'Chưa có file test-data.json. Chạy: node scripts/generateTestData.js' });
+        }
+        const data = sanitizeData(JSON.parse(fs.readFileSync(testFile, 'utf8')));
+        clinicData = data;
+        clinicData = applyTombstones(clinicData);
+        clinicData.syncMeta = { version: 0, lastUpdated: Date.now(), deletedPatientIds: [] };
+        persistAndBroadcast(null);
+        res.json({
+            success: true,
+            message: `Đã nạp ${data.patients?.length || 0} BN, ${data.inventory?.length || 0} SP kho`,
+            data: clinicData
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// Serve test-data.json for download
+app.get('/data/test-data.json', (req, res) => {
+    const testFile = path.join(__dirname, 'data', 'test-data.json');
+    if (fs.existsSync(testFile)) {
+        res.sendFile(testFile);
+    } else {
+        res.status(404).json({ error: 'Not found' });
+    }
 });
 
 // Backup endpoints
 app.get('/api/backup', (req, res) => {
     res.json({
-        data: clinicData,
+        data: applyTombstones(clinicData),
         timestamp: Date.now(),
         version: '1.0'
     });
@@ -254,14 +362,10 @@ app.get('/api/backup/restore', (req, res) => {
         }
 
         const content = fs.readFileSync(filePath, 'utf8');
-        const data = JSON.parse(content);
+        const data = sanitizeData(JSON.parse(content));
 
-        // Update in-memory and file
-        clinicData = data;
-        saveData(clinicData);
-
-        // Broadcast to all clients
-        io.emit('data-updated', clinicData);
+        clinicData = mergeClinicData(sanitizeData(JSON.parse(content)));
+        persistAndBroadcast(null);
 
         res.json({ success: true, data });
     } catch (e) {
@@ -273,9 +377,8 @@ app.post('/api/backup/restore', (req, res) => {
     try {
         const { data } = req.body;
         if (data) {
-            clinicData = data;
-            saveData(clinicData);
-            io.emit('data-updated', clinicData);
+            clinicData = mergeClinicData(sanitizeData(data));
+            persistAndBroadcast(null);
             res.json({ success: true });
         } else {
             res.status(400).json({ error: 'No data provided' });
@@ -290,16 +393,12 @@ io.on('connection', (socket) => {
     console.log(`[Socket] Client connected: ${socket.id}`);
 
     // Send current data to newly connected client
-    socket.emit('data-updated', clinicData);
+    socket.emit('data-updated', applyTombstones(clinicData));
 
-    // Handle data changes from clients
     socket.on('data-changed', (data) => {
         console.log(`[Socket] Data received from ${socket.id}`);
-        clinicData = data;
-        saveData(clinicData);
-
-        // Broadcast to all OTHER clients
-        socket.broadcast.emit('data-updated', data);
+        mergeClinicData(data);
+        persistAndBroadcast(socket);
     });
 
     socket.on('disconnect', () => {

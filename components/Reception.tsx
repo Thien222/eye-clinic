@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
+import { getLocalDateString } from '../services/utils';
 import { Patient } from '../types';
-import { Printer, RefreshCw, Plus, Search, Edit2, Trash2, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Printer, RefreshCw, Plus, Edit2, Trash2, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { PageHeader } from './ui/PageHeader';
+import { Card } from './ui/Card';
+import { Button } from './ui/Button';
+import { SearchInput } from './ui/SearchInput';
+import { Badge } from './ui/Badge';
+import { getPatientStatus } from '../services/statusStyles';
 
 // UUID generator that works on HTTP
 const generateId = () => 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
@@ -16,10 +23,7 @@ export const Reception: React.FC = () => {
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
 
   // Date filter state
-  const [filterDate, setFilterDate] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0]; // YYYY-MM-DD format
-  });
+  const [filterDate, setFilterDate] = useState<string>(() => getLocalDateString());
   const [showAllDates, setShowAllDates] = useState(false);
 
   // Pagination state
@@ -44,13 +48,18 @@ export const Reception: React.FC = () => {
   const [lastPrintedTicket, setLastPrintedTicket] = useState<{ number: number, name: string } | null>(null);
 
   useEffect(() => {
+    db.runEndOfDayCleanup();
     loadPatients();
 
-    // Listen for DB updates from auto-sync
     const handleDbUpdate = () => loadPatients();
     window.addEventListener('clinic-db-updated', handleDbUpdate);
 
-    return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
+    const eodInterval = setInterval(() => db.runEndOfDayCleanup(), 60 * 60 * 1000);
+
+    return () => {
+      window.removeEventListener('clinic-db-updated', handleDbUpdate);
+      clearInterval(eodInterval);
+    };
   }, []);
 
   const loadPatients = () => {
@@ -130,7 +139,7 @@ export const Reception: React.FC = () => {
         return matchesSearch;
       }
 
-      const patientDate = new Date(p.timestamp).toISOString().split('T')[0];
+      const patientDate = getLocalDateString(p.timestamp);
       return matchesSearch && patientDate === filterDate;
     });
   }, [patients, searchTerm, filterDate, showAllDates]);
@@ -147,66 +156,50 @@ export const Reception: React.FC = () => {
     setCurrentPage(1);
   }, [searchTerm, filterDate, showAllDates]);
 
-  const getStatusLabel = (status: Patient['status']) => {
-    switch (status) {
-      case 'waiting_refraction': return { text: 'Cho do K.Xa', color: 'bg-yellow-100 text-yellow-700' };
-      case 'processing_refraction': return { text: 'Dang do', color: 'bg-blue-100 text-blue-700' };
-      case 'waiting_doctor': return { text: 'Cho kham', color: 'bg-orange-100 text-orange-700' };
-      case 'processing_doctor': return { text: 'Dang kham', color: 'bg-purple-100 text-purple-700' };
-      case 'waiting_billing': return { text: 'Cho thanh toan', color: 'bg-pink-100 text-pink-700' };
-      case 'completed': return { text: 'Hoan thanh', color: 'bg-green-100 text-green-700' };
-      default: return { text: '---', color: 'bg-gray-100' };
-    }
-  };
+  const getStatusLabel = (status: Patient['status']) => getPatientStatus(status);
 
   const formatDate = (timestamp: number) => {
     const d = new Date(timestamp);
     return `${d.getDate()}/${d.getMonth() + 1}`;
   };
 
+  const [settings, setSettings] = useState(db.getSettings());
   const today = new Date();
+
+  useEffect(() => {
+    const refresh = () => setSettings(db.getSettings());
+    window.addEventListener('clinic-db-updated', refresh);
+    return () => window.removeEventListener('clinic-db-updated', refresh);
+  }, []);
   const formattedDate = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
+  const ticketSettings = settings.ticket;
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Tiep Tan & Boc So</h2>
-          <p className="text-sm text-gray-500">
-            {showAllDates
-              ? `Tat ca: ${filteredPatients.length} benh nhan`
-              : `Ngay ${filterDate.split('-').reverse().join('/')}: ${filteredPatients.length} benh nhan`
-            }
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowForm(true)}
-            className="bg-brand-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-brand-700"
-          >
-            <Plus size={20} /> Benh Nhan Moi
-          </button>
-        </div>
-      </div>
+    <div className="max-w-7xl mx-auto space-y-4">
+      <PageHeader
+        title="Tiếp tân & Bốc số"
+        subtitle={showAllDates
+          ? `Tất cả: ${filteredPatients.length} bệnh nhân`
+          : `Ngày ${filterDate.split('-').reverse().join('/')}: ${filteredPatients.length} bệnh nhân`
+        }
+        actions={
+          <Button icon={Plus} onClick={() => setShowForm(true)}>
+            Bệnh nhân mới
+          </Button>
+        }
+      />
 
-      {/* Patient List */}
-      <div className="bg-white rounded-xl shadow-sm p-4">
-        {/* Search and Filter Bar */}
+      <Card padding="md">
         <div className="mb-4 flex gap-3 items-center flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Tim kiem (Ten, SDT)..."
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+          <SearchInput
+            containerClassName="flex-1 min-w-[200px]"
+            placeholder="Tìm kiếm (Tên, SĐT)..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
 
-          {/* Date Filter */}
           <div className="flex items-center gap-2">
-            <Calendar size={20} className="text-gray-400" />
+            <Calendar size={18} className="text-slate-400" />
             <input
               type="date"
               value={filterDate}
@@ -214,79 +207,75 @@ export const Reception: React.FC = () => {
                 setFilterDate(e.target.value);
                 setShowAllDates(false);
               }}
-              className="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500"
+              className="clinic-input w-auto"
             />
-            <button
+            <Button
+              variant={showAllDates ? 'secondary' : 'outline'}
+              size="sm"
               onClick={() => setShowAllDates(!showAllDates)}
-              className={`px-3 py-2 rounded-lg font-medium text-sm ${showAllDates
-                ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
             >
-              {showAllDates ? 'Tat ca' : 'Loc ngay'}
-            </button>
+              {showAllDates ? 'Tất cả' : 'Lọc ngày'}
+            </Button>
           </div>
 
-          <button onClick={loadPatients} className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200">
-            <RefreshCw size={20} />
-          </button>
+          <Button variant="ghost" size="sm" onClick={loadPatients} aria-label="Làm mới">
+            <RefreshCw size={18} />
+          </Button>
         </div>
 
-        {/* Table */}
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-600 font-medium">
+        <div className="mobile-table-wrapper overflow-x-auto">
+        <table className="w-full text-left text-sm clinic-table">
+          <thead>
             <tr>
-              <th className="p-2 w-16">STT</th>
-              <th className="p-2 w-16">Ngay</th>
-              <th className="p-2">Ho Ten</th>
-              <th className="p-2 w-20">Nam Sinh</th>
-              <th className="p-2 w-24">Thi luc</th>
-              <th className="p-2">Ly do</th>
-              <th className="p-2 w-28">Trang thai</th>
-              <th className="p-2 w-24">Hanh dong</th>
+              <th className="p-3 w-16">STT</th>
+              <th className="p-3 w-16">Ngày</th>
+              <th className="p-3">Họ tên</th>
+              <th className="p-3 w-20">Năm sinh</th>
+              <th className="p-3 w-24">Thị lực</th>
+              <th className="p-3">Lý do</th>
+              <th className="p-3 w-28">Trạng thái</th>
+              <th className="p-3 w-28">Hành động</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-slate-100">
             {paginatedPatients.map((p) => {
               const status = getStatusLabel(p.status);
               return (
-                <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="p-2 font-bold text-brand-600">{String(p.ticketNumber).padStart(3, '0')}</td>
-                  <td className="p-2 text-gray-500 text-xs">{formatDate(p.timestamp)}</td>
-                  <td className="p-2 font-medium">{p.fullName}</td>
-                  <td className="p-2">{p.dob}</td>
-                  <td className="p-2 text-xs">
+                <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="p-3 font-bold text-brand-600 tabular-nums">{String(p.ticketNumber).padStart(3, '0')}</td>
+                  <td className="p-3 text-slate-500 text-xs">{formatDate(p.timestamp)}</td>
+                  <td className="p-3 font-medium text-slate-900">{p.fullName}</td>
+                  <td className="p-3">{p.dob}</td>
+                  <td className="p-3 text-xs">
                     {p.initialVA?.od || '-'} / {p.initialVA?.os || '-'}
-                    {p.hasGlasses && <span className="ml-1 text-xs bg-blue-100 text-blue-600 px-1 rounded">K</span>}
+                    {p.hasGlasses && <Badge className="ml-1.5 bg-sky-50 text-sky-700 ring-1 ring-sky-200">K</Badge>}
                   </td>
-                  <td className="p-2 text-gray-500 truncate max-w-[150px]">{p.reason}</td>
-                  <td className="p-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${status.color}`}>
-                      {status.text}
-                    </span>
+                  <td className="p-3 text-slate-500 truncate max-w-[150px]">{p.reason}</td>
+                  <td className="p-3">
+                    <Badge className={status.className}>{status.text}</Badge>
                   </td>
-                  <td className="p-2">
+                  <td className="p-3">
                     <div className="flex gap-1">
                       <button
                         onClick={() => printTicketOnly(p)}
-                        className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
-                        title="In lai phieu STT"
+                        className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                        title="In lại phiếu STT"
                       >
-                        <Printer size={14} />
+                        <Printer size={15} />
                       </button>
                       <button
                         onClick={() => setEditingPatient(p)}
-                        className="p-1.5 bg-yellow-100 hover:bg-yellow-200 rounded text-yellow-600"
-                        title="Sua thong tin"
+                        className="p-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer"
+                        title="Sửa thông tin"
                       >
-                        <Edit2 size={14} />
+                        <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => handleDeletePatient(p)}
-                        className="p-1.5 bg-red-100 hover:bg-red-200 rounded text-red-600"
-                        title="Xoa benh nhan"
+                        className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors cursor-pointer"
+                        title="Xóa bệnh nhân"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </td>
@@ -295,8 +284,8 @@ export const Reception: React.FC = () => {
             })}
             {paginatedPatients.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-gray-400">
-                  Khong co benh nhan nao
+                <td colSpan={8} className="p-8 text-center text-slate-400">
+                  Không có bệnh nhân nào
                 </td>
               </tr>
             )}
@@ -356,23 +345,26 @@ export const Reception: React.FC = () => {
             </div>
           </div>
         )}
-      </div>
+        </div>
+      </Card>
 
       {/* New Patient Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-4 border-b bg-brand-50 flex justify-between flex-shrink-0">
-              <h3 className="text-xl font-bold text-brand-800">Them Benh Nhan Moi</h3>
-              <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-red-500 text-2xl">&times;</button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-card border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-fade-in-up">
+            <div className="p-5 border-b border-slate-100 bg-brand-50 flex justify-between flex-shrink-0">
+              <h3 className="text-lg font-bold text-brand-800">Thêm bệnh nhân mới</h3>
+              <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer">
+                <X size={20} />
+              </button>
             </div>
             <div className="p-6 grid grid-cols-2 gap-4 overflow-y-auto flex-1">
               <div className="col-span-2">
-                <label className="block text-sm font-medium mb-1">Ho va ten *</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Họ và tên *</label>
                 <input
                   value={formData.fullName}
                   onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                  className="w-full border rounded p-2"
+                  className="clinic-input"
                   placeholder="Nhap ho va ten"
                 />
               </div>
@@ -612,12 +604,15 @@ export const Reception: React.FC = () => {
       <div className="print-area">
         {lastPrintedTicket && (
           <div className="print-ticket">
-            <div className="clinic-name">PHONG KHAM MAT NGOAI GIO</div>
-            <div className="doctor-name">BSCKII. Hua Trung Kien</div>
+            {settings.logoUrl && settings.invoice?.showLogo !== false && (
+              <img src={settings.logoUrl} alt="Logo" style={{ maxHeight: '12mm', margin: '0 auto 2mm', display: 'block' }} />
+            )}
+            <div className="clinic-name">{ticketSettings?.header || settings.name || 'PHONG KHAM MAT NGOAI GIO'}</div>
+            <div className="doctor-name">{ticketSettings?.subHeader || settings.doctorName || ''}</div>
             <div className="ticket-number">{String(lastPrintedTicket.number).padStart(3, '0')}</div>
             <div className="patient-name">{lastPrintedTicket.name}</div>
-            <div className="ticket-note">Khach hang vui long cho den STT</div>
-            <div className="ticket-date">Phieu co hieu luc trong ngay {formattedDate}</div>
+            <div className="ticket-note">{ticketSettings?.note || 'Khach hang vui long cho den STT'}</div>
+            <div className="ticket-date">{ticketSettings?.footer || `Phieu co hieu luc trong ngay ${formattedDate}`}</div>
           </div>
         )}
       </div>

@@ -173,8 +173,32 @@ export const Settings: React.FC = () => {
   };
 
   const handleSave = () => {
-    db.saveSettings(settings);
-    alert('Đã lưu cài đặt thành công!');
+    const refraction = settings.refraction || { header: '', rightHeader: '', disclaimer1: '', disclaimer2: '' };
+    const ticket = settings.ticket || { header: '', subHeader: '', note: '', footer: '' };
+    const invoice = settings.invoice || { header: '', footer: '', showLogo: false };
+
+    // Đồng bộ tên PK sang các mẫu in nếu chưa tùy chỉnh riêng
+    const syncName = settings.name?.trim() || '';
+    const toSave = {
+      ...settings,
+      refraction: {
+        ...refraction,
+        header: refraction.header?.trim() || syncName,
+      },
+      ticket: {
+        ...ticket,
+        header: ticket.header?.trim() || syncName,
+      },
+      invoice: {
+        ...invoice,
+        header: invoice.header?.trim() || 'HÓA ĐƠN BÁN LẺ',
+      },
+      vat: settings.vat || { enabled: false, rate: 10 },
+      backup: settings.backup || { path: '', maxFiles: 10, autoBackupOnClose: true, autoBackupInterval: 4 },
+    };
+    db.saveSettings(toSave);
+    setSettings(toSave);
+    alert('Đã lưu cài đặt thành công! Tên phòng khám sẽ hiển thị đồng nhất khi in phiếu/hóa đơn.');
   };
 
   const handleBackup = async () => {
@@ -291,6 +315,28 @@ export const Settings: React.FC = () => {
   };
 
 
+  const handleLoadTestData = async () => {
+    if (!confirm('Nạp dữ liệu TEST?\n\nSẽ thay thế toàn bộ BN, kho hàng, hóa đơn hiện tại bằng dữ liệu mẫu để test.')) return;
+    try {
+      const res = await fetch('/api/test-data/load', { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        alert(`✅ ${result.message}\n\nTrang sẽ tải lại.`);
+        window.location.reload();
+        return;
+      }
+      throw new Error(result.message || 'API lỗi');
+    } catch (apiErr: any) {
+      const ok = await db.loadTestData();
+      if (ok) {
+        alert('✅ Đã nạp dữ liệu test! Trang sẽ tải lại.');
+        window.location.reload();
+      } else {
+        alert(`❌ Không nạp được dữ liệu test.\n\n1. Chạy: node scripts/generateTestData.js\n2. Khởi động server: npm run dev\n3. Thử lại\n\nLỗi: ${apiErr.message}`);
+      }
+    }
+  };
+
   const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -323,7 +369,7 @@ export const Settings: React.FC = () => {
   return (
     <div className="flex gap-6 h-full">
       {/* Sidebar Tabs */}
-      <div className="w-56 bg-white rounded-xl shadow-sm p-4">
+      <div className="w-56 clinic-card p-4">
         <h3 className="font-bold text-gray-700 mb-4 text-sm uppercase tracking-wide">Cài Đặt</h3>
         <div className="space-y-1">
           {tabs.map(tab => (
@@ -343,7 +389,7 @@ export const Settings: React.FC = () => {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm p-6 overflow-y-auto">
+      <div className="flex-1 clinic-card p-6 overflow-y-auto">
         {/* General Settings */}
         {activeTab === 'general' && (
           <div className="space-y-6">
@@ -353,7 +399,18 @@ export const Settings: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tên phòng khám *</label>
                 <input
                   value={settings.name}
-                  onChange={e => setSettings({ ...settings, name: e.target.value })}
+                  onChange={e => {
+                    const name = e.target.value;
+                    setSettings(prev => {
+                      const next = { ...prev, name };
+                      const oldHeader = prev.refraction?.header?.trim();
+                      const oldName = prev.name?.trim();
+                      if (!oldHeader || oldHeader === oldName) {
+                        next.refraction = { ...prev.refraction!, header: name };
+                      }
+                      return next;
+                    });
+                  }}
                   className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -397,6 +454,18 @@ export const Settings: React.FC = () => {
                   className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
                   placeholder="Từ 8h đến 19h, Thứ hai đến Chủ nhật"
                 />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Logo (URL ảnh hoặc base64)</label>
+                <input
+                  value={settings.logoUrl || ''}
+                  onChange={e => setSettings({ ...settings, logoUrl: e.target.value })}
+                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
+                  placeholder="https://... hoặc data:image/png;base64,..."
+                />
+                {settings.logoUrl && (
+                  <img src={settings.logoUrl} alt="Logo preview" className="mt-2 max-h-16 object-contain" />
+                )}
               </div>
             </div>
           </div>
@@ -542,11 +611,12 @@ export const Settings: React.FC = () => {
             <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Tùy Chỉnh Phiếu Khúc Xạ (A5)</h2>
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề trái</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dòng phụ in bên trái (để trống = tên phòng khám)</label>
                 <input
                   value={settings.refraction?.header || ''}
                   onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, header: e.target.value } })}
                   className="w-full border rounded-lg p-3"
+                  placeholder={settings.name || 'Tên phòng khám'}
                 />
               </div>
               <div>
@@ -584,7 +654,16 @@ export const Settings: React.FC = () => {
             </h2>
 
             {/* Manual Backup/Restore Buttons */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
+              <button
+                onClick={handleLoadTestData}
+                className="py-6 border-2 border-dashed border-green-400 rounded-lg hover:bg-green-50 flex flex-col items-center justify-center gap-2 transition-colors"
+              >
+                <Database size={32} className="text-green-600" />
+                <span className="font-medium text-green-700">Nạp dữ liệu TEST</span>
+                <span className="text-xs text-gray-500">8 BN + 9 SP kho + 2 HĐ</span>
+              </button>
+
               <button
                 onClick={handleBackup}
                 className="py-6 border-2 border-dashed border-brand-300 rounded-lg hover:bg-brand-50 flex flex-col items-center justify-center gap-2 transition-colors"

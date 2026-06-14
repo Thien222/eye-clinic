@@ -1,6 +1,9 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
+import { parseLensSpecs, rxMatches, isSameLocalDay, groupLensesByPrice, findSamePriceLensPairs } from '../services/utils';
 import { Patient, InventoryItem } from '../types';
+
+type CartEntry = { cartKey: string; item: InventoryItem; qty: number; eye?: 'OD' | 'OS' };
 import { Search, Printer, Plus, Edit, X, Save, FilePlus, Glasses, Eye, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { InvoicePrint } from './InvoicePrint';
@@ -33,7 +36,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    // Billing State
    const [waitingPatients, setWaitingPatients] = useState<Patient[]>([]);
    const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-   const [cart, setCart] = useState<{ item: InventoryItem, qty: number }[]>([]);
+   const [cart, setCart] = useState<CartEntry[]>([]);
    const [extraCharges, setExtraCharges] = useState({ discount: 0, surcharge: 0 });
    const [frameSearchCode, setFrameSearchCode] = useState('');
    const [foundFrame, setFoundFrame] = useState<InventoryItem | null>(null);
@@ -41,6 +44,8 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    // Lens suggestions
    const [suggestedLensesOD, setSuggestedLensesOD] = useState<InventoryItem[]>([]);
    const [suggestedLensesOS, setSuggestedLensesOS] = useState<InventoryItem[]>([]);
+   const [suggestedPairedLenses, setSuggestedPairedLenses] = useState<InventoryItem[]>([]);
+   const [samePricePairs, setSamePricePairs] = useState<{ price: number; od: InventoryItem[]; os: InventoryItem[] }[]>([]);
 
    // Inventory State
    const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -72,6 +77,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    });
    const [nameSuggestions, setNameSuggestions] = useState<InventoryItem[]>([]);
    const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+   const [settings, setSettings] = useState(db.getSettings());
 
    // Auto-fill khi nh?p tï¿½n s?n ph?m
    const handleNameChange = (name: string) => {
@@ -113,13 +119,16 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
    useEffect(() => {
       refreshData();
-      const handleDbUpdate = () => refreshData();
+      const handleDbUpdate = () => {
+         refreshData();
+         setSettings(db.getSettings());
+      };
       window.addEventListener('clinic-db-updated', handleDbUpdate);
       return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
    }, []);
 
    const refreshData = () => {
-      setWaitingPatients(db.getPatients().filter(p => p.status === 'waiting_billing'));
+      setWaitingPatients(db.getPatients().filter(p => p.status === 'waiting_billing' && isSameLocalDay(p.timestamp)));
       setInventory(db.getInventory());
       setInvoices(db.getInvoices());
    };
@@ -133,67 +142,35 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       setFrameSearchCode('');
 
       if (p.refraction) {
-         // Gá»£i Ă½ trĂ²ng theo Ä‘á»™ prescription
-         const inv = db.getInventory().filter(i => i.category === 'lens');
-
-         // TrĂ²ng máº¯t pháº£i (OD)
+         const inv = db.getInventory().filter(i => i.category === 'lens' && i.quantity > 0);
          const odSph = parseFloat(p.refraction.finalRx.od.sph) || 0;
          const odCyl = parseFloat(p.refraction.finalRx.od.cyl) || 0;
          const odAdd = parseFloat(p.refraction.finalRx.od.add || '0') || 0;
-
-         const matchesOD = inv.filter(item => {
-            // Parse SPH - xu ly Plano (0 do)
-            let itemSph = 0;
-            if (item.specs?.sph !== undefined) {
-               if (typeof item.specs.sph === 'string' && item.specs.sph.toLowerCase() === 'plano') {
-                  itemSph = 0;
-               } else {
-                  itemSph = parseFloat(String(item.specs.sph)) || 0;
-               }
-            }
-            const itemCyl = parseFloat(String(item.specs?.cyl || 0)) || 0;
-            const itemAdd = parseFloat(String(item.specs?.add || 0)) || 0;
-
-            // Kiem tra do cau (SPH) chenh lech <= 0.25
-            const sphMatch = Math.abs(itemSph - odSph) <= 0.25;
-            // Kiem tra do loan (CYL) chenh lech <= 0.25
-            const cylMatch = Math.abs(itemCyl - odCyl) <= 0.25;
-            // Kiem tra ADD neu co
-            const addMatch = odAdd === 0 || (itemAdd !== undefined && Math.abs(itemAdd - odAdd) <= 0.25);
-
-            return sphMatch && cylMatch && addMatch && item.quantity > 0;
-         });
-
-         // TrĂ²ng máº¯t trĂ¡i (OS)
          const osSph = parseFloat(p.refraction.finalRx.os.sph) || 0;
          const osCyl = parseFloat(p.refraction.finalRx.os.cyl) || 0;
          const osAdd = parseFloat(p.refraction.finalRx.os.add || '0') || 0;
 
-         const matchesOS = inv.filter(item => {
-            // Parse SPH - xu ly Plano (0 do)
-            let itemSph = 0;
-            if (item.specs?.sph !== undefined) {
-               if (typeof item.specs.sph === 'string' && item.specs.sph.toLowerCase() === 'plano') {
-                  itemSph = 0;
-               } else {
-                  itemSph = parseFloat(String(item.specs.sph)) || 0;
-               }
-            }
-            const itemCyl = parseFloat(String(item.specs?.cyl || 0)) || 0;
-            const itemAdd = parseFloat(String(item.specs?.add || 0)) || 0;
+         const matchForEye = (sph: number, cyl: number, add: number) =>
+            inv.filter(item => {
+               const { itemSph, itemCyl, itemAdd } = parseLensSpecs(item.specs);
+               return rxMatches(itemSph, itemCyl, itemAdd, sph, cyl, add);
+            });
 
-            const sphMatch = Math.abs(itemSph - osSph) <= 0.25;
-            const cylMatch = Math.abs(itemCyl - osCyl) <= 0.25;
-            const addMatch = osAdd === 0 || (itemAdd !== undefined && Math.abs(itemAdd - osAdd) <= 0.25);
-
-            return sphMatch && cylMatch && addMatch && item.quantity > 0;
-         });
+         const matchesOD = matchForEye(odSph, odCyl, odAdd);
+         const matchesOS = matchForEye(osSph, osCyl, osAdd);
+         const paired = matchesOD.filter(odLens =>
+            matchesOS.some(osLens => odLens.code === osLens.code && odLens.price === osLens.price)
+         );
 
          setSuggestedLensesOD(matchesOD);
          setSuggestedLensesOS(matchesOS);
+         setSuggestedPairedLenses(paired);
+         setSamePricePairs(findSamePriceLensPairs(matchesOD, matchesOS));
       } else {
          setSuggestedLensesOD([]);
          setSuggestedLensesOS([]);
+         setSuggestedPairedLenses([]);
+         setSamePricePairs([]);
       }
    };
 
@@ -211,24 +188,71 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       }
    };
 
+   const getCartKey = (itemId: string, eye?: 'OD' | 'OS') => (eye ? `${itemId}::${eye}` : itemId);
+
+   const getCartQty = (itemId: string, eye: 'OD' | 'OS') => {
+      const key = getCartKey(itemId, eye);
+      return cart.find(c => c.cartKey === key)?.qty || 0;
+   };
+
+   const addLensToCart = (item: InventoryItem, eye: 'OD' | 'OS' | 'both') => {
+      if (eye === 'both') {
+         addSingleEyeLens(item, 'OD', 1);
+         addSingleEyeLens(item, 'OS', 1);
+         return;
+      }
+      addSingleEyeLens(item, eye, 1);
+   };
+
+   const addSingleEyeLens = (item: InventoryItem, eye: 'OD' | 'OS', qty: number) => {
+      const key = getCartKey(item.id, eye);
+      setCart(prev => {
+         const existing = prev.find(c => c.cartKey === key);
+         if (existing) {
+            return prev.map(c => c.cartKey === key ? { ...c, qty: c.qty + qty } : c);
+         }
+         return [...prev, { cartKey: key, item, qty, eye }];
+      });
+   };
+
+   const adjustSingleEyeQty = (item: InventoryItem, eye: 'OD' | 'OS', delta: number) => {
+      const key = getCartKey(item.id, eye);
+      setCart(prev => {
+         const existing = prev.find(c => c.cartKey === key);
+         if (!existing && delta > 0) {
+            return [...prev, { cartKey: key, item, qty: delta, eye }];
+         }
+         if (!existing) return prev;
+         const newQty = existing.qty + delta;
+         if (newQty <= 0) return prev.filter(c => c.cartKey !== key);
+         return prev.map(c => c.cartKey === key ? { ...c, qty: newQty } : c);
+      });
+   };
+
+   const addSamePricePair = (odLens: InventoryItem, osLens: InventoryItem) => {
+      addSingleEyeLens(odLens, 'OD', 1);
+      addSingleEyeLens(osLens, 'OS', 1);
+   };
+
    const addToCart = (item: InventoryItem) => {
-      const existing = cart.find(c => c.item.id === item.id);
+      const key = getCartKey(item.id);
+      const existing = cart.find(c => c.cartKey === key);
       if (existing) {
-         setCart(cart.map(c => c.item.id === item.id ? { ...c, qty: c.qty + 1 } : c));
+         setCart(cart.map(c => c.cartKey === key ? { ...c, qty: c.qty + 1 } : c));
       } else {
-         setCart([...cart, { item, qty: 1 }]);
+         setCart([...cart, { cartKey: key, item, qty: 1 }]);
       }
    };
 
-   const removeFromCart = (itemId: string) => {
-      setCart(cart.filter(c => c.item.id !== itemId));
+   const removeFromCart = (cartKey: string) => {
+      setCart(cart.filter(c => c.cartKey !== cartKey));
    };
 
-   const updateCartQuantity = (itemId: string, newQty: number) => {
+   const updateCartQuantity = (cartKey: string, newQty: number) => {
       if (newQty <= 0) {
-         removeFromCart(itemId);
+         removeFromCart(cartKey);
       } else {
-         setCart(cart.map(c => c.item.id === itemId ? { ...c, qty: newQty } : c));
+         setCart(cart.map(c => c.cartKey === cartKey ? { ...c, qty: newQty } : c));
       }
    };
 
@@ -252,11 +276,12 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          patientAddress: selectedPatient.address,
          items: cart.map(c => ({
             itemId: c.item.id,
-            name: c.item.name,
+            name: c.eye ? `${c.item.name} (${c.eye})` : c.item.name,
             quantity: c.qty,
             costPrice: c.item.costPrice || 0,
             price: c.item.price,
-            isLens: c.item.category === 'lens'
+            isLens: c.item.category === 'lens',
+            eye: c.eye
          })),
          subtotal,
          discount: extraCharges.discount,
@@ -423,8 +448,6 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    const subtotal = cart.reduce((s, c) => s + (c.item.price * c.qty), 0);
    const finalTotal = Math.max(0, subtotal + extraCharges.surcharge - extraCharges.discount);
 
-   const settings = db.getSettings();
-
    return (
       <div className="h-full flex flex-col">
          <div className="flex gap-4 mb-4 border-b">
@@ -432,13 +455,13 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                onClick={() => setActiveTab('billing')}
                className={`px-4 py-2 font-bold ${activeTab === 'billing' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-500'}`}
             >
-               Thanh Toan & Hoa Don
+               Thanh toán & Hóa đơn
             </button>
             <button
                onClick={() => setActiveTab('invoices')}
                className={`px-4 py-2 font-bold ${activeTab === 'invoices' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-500'}`}
             >
-               Lich Su Hoa Don ({invoices.length})
+               Lịch sử hóa đơn ({invoices.length})
             </button>
             <button
                onClick={() => {
@@ -450,16 +473,16 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                }}
                className={`px-4 py-2 font-bold ${activeTab === 'inventory' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-500'}`}
             >
-               Quan Ly Kho
+               Quản lý kho
             </button>
          </div>
 
          {activeTab === 'billing' && (
             <div className="flex gap-6 h-full overflow-hidden">
                {/* Waiting List */}
-               <div className="w-1/4 bg-white rounded-xl shadow-sm p-4 overflow-y-auto">
+               <div className="w-1/4 clinic-card p-4 overflow-y-auto">
                   <h3 className="font-bold mb-4 flex items-center gap-2">
-                     <Glasses size={18} /> Cho Tao Hoa Don
+                     <Glasses size={18} /> Chờ tạo hóa đơn
                   </h3>
                   {waitingPatients.length === 0 && (
                      <p className="text-gray-400 text-sm text-center mt-4">Khong co benh nhan</p>
@@ -482,15 +505,15 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                </div>
 
                {/* Checkout Area */}
-               <div className="flex-1 bg-white rounded-xl shadow-sm p-6 flex flex-col overflow-y-auto">
+               <div className="flex-1 clinic-card p-6 flex flex-col overflow-y-auto">
                   {selectedPatient ? (
                      <>
-                        <h2 className="text-2xl font-bold mb-4">Hoa Don: {selectedPatient.fullName}</h2>
+                        <h2 className="text-2xl font-bold mb-4">Hóa đơn: {selectedPatient.fullName}</h2>
 
                         {/* Prescription Info */}
                         {selectedPatient.refraction && (
                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 mb-4 text-sm">
-                              <h4 className="font-bold text-blue-800 mb-2">Thong so kinh dieu chinh:</h4>
+                              <h4 className="font-bold text-blue-800 mb-2">Thông số kính điều chỉnh:</h4>
                               <div className="grid grid-cols-2 gap-2">
                                  <div>
                                     <strong>OD:</strong> SPH {selectedPatient.refraction.finalRx.od.sph} | CYL {selectedPatient.refraction.finalRx.od.cyl}
@@ -501,118 +524,139 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                     {selectedPatient.refraction.finalRx.os.add && ` | ADD ${selectedPatient.refraction.finalRx.os.add}`}
                                  </div>
                               </div>
-                              <p className="mt-1"><strong>Loai kinh:</strong> {selectedPatient.refraction.finalRx.lensType} | <strong>PD:</strong> {selectedPatient.refraction.finalRx.od.pd || '-'}mm</p>
+                              <p className="mt-1"><strong>Loại kính:</strong> {selectedPatient.refraction.finalRx.lensType} | <strong>PD:</strong> {selectedPatient.refraction.finalRx.od.pd || '-'}mm</p>
                            </div>
                         )}
 
                         {/* Lens Suggestions */}
-                        {(suggestedLensesOD.length > 0 || suggestedLensesOS.length > 0) && (
+                        {(suggestedPairedLenses.length > 0 || samePricePairs.length > 0 || suggestedLensesOD.length > 0 || suggestedLensesOS.length > 0) && (
                            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-4">
-                              <h4 className="font-bold text-yellow-800 mb-3">Goi y trong kinh phu hop:</h4>
+                              <h4 className="font-bold text-yellow-800 mb-3">Gợi ý tròng kính phù hợp:</h4>
+
+                              {suggestedPairedLenses.length > 0 && (
+                                 <div className="mb-3 p-2 bg-green-50 rounded border border-green-200">
+                                    <p className="text-sm font-medium text-green-800 mb-2">Cặp tròng 2 mắt (cùng mã, cùng giá):</p>
+                                    <div className="flex gap-2 overflow-x-auto pb-2">
+                                       {groupLensesByPrice(suggestedPairedLenses).map(group => (
+                                          <div key={`pair-price-${group.price}`} className="min-w-[200px]">
+                                             <p className="text-xs font-bold text-green-700 mb-1">{group.price.toLocaleString('vi-VN')} đ / tròng</p>
+                                             {group.items.map(lens => {
+                                                const qtyOD = getCartQty(lens.id, 'OD');
+                                                const qtyOS = getCartQty(lens.id, 'OS');
+                                                return (
+                                                   <div key={`pair-${lens.id}`} className="bg-white p-2 rounded shadow-sm border text-xs border-green-300 mb-2">
+                                                      <div className="font-bold text-gray-800">{lens.name}</div>
+                                                      <div className="text-gray-500">Mã: {lens.code} | SPH: {formatSPH(lens.specs?.sph)} | CYL: {lens.specs?.cyl}</div>
+                                                      <div className="text-gray-400">Kho: {lens.quantity}</div>
+                                                      <button onClick={() => addLensToCart(lens, 'both')}
+                                                         className="w-full mt-2 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 cursor-pointer">
+                                                         + Thêm cặp 2 mắt (OD+OS)
+                                                      </button>
+                                                      <div className="flex items-center gap-2 mt-1 justify-center text-[10px]">
+                                                         <span>OD: {qtyOD}</span><span>OS: {qtyOS}</span>
+                                                      </div>
+                                                   </div>
+                                                );
+                                             })}
+                                          </div>
+                                       ))}
+                                    </div>
+                                 </div>
+                              )}
+
+                              {samePricePairs.filter(p => !suggestedPairedLenses.some(l => p.od.some(o => o.id === l.id))).length > 0 && (
+                                 <div className="mb-3 p-2 bg-teal-50 rounded border border-teal-200">
+                                    <p className="text-sm font-medium text-teal-800 mb-2">Gợi ý cặp cùng giá (mã khác nhau):</p>
+                                    {samePricePairs.map(pair => (
+                                       <div key={`same-price-${pair.price}`} className="mb-2">
+                                          <p className="text-xs font-bold text-teal-700 mb-1">{pair.price.toLocaleString('vi-VN')} đ / tròng</p>
+                                          <div className="flex gap-2 flex-wrap">
+                                             {pair.od.map(odLens => pair.os.map(osLens => (
+                                                <button
+                                                   key={`pair-${odLens.id}-${osLens.id}`}
+                                                   onClick={() => addSamePricePair(odLens, osLens)}
+                                                   className="text-xs bg-white border border-teal-300 rounded p-2 hover:bg-teal-100 cursor-pointer text-left"
+                                                >
+                                                   <div className="font-bold">OD: {odLens.name}</div>
+                                                   <div className="font-bold">OS: {osLens.name}</div>
+                                                   <div className="text-teal-700 mt-1">+ Thêm cặp cùng giá</div>
+                                                </button>
+                                             )))}
+                                          </div>
+                                       </div>
+                                    ))}
+                                 </div>
+                              )}
 
                               {suggestedLensesOD.length > 0 && (
                                  <div className="mb-3">
-                                    <p className="text-sm font-medium text-gray-700 mb-2">Trong mat phai (OD):</p>
-                                    <div className="flex gap-2 overflow-x-auto pb-2">
-                                       {suggestedLensesOD.map(lens => {
-                                          const inCart = cart.find(c => c.item.id === lens.id);
-                                          const qty = inCart?.qty || 0;
-                                          return (
-                                             <div
-                                                key={lens.id}
-                                                className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs"
-                                             >
-                                                <div className="font-bold text-gray-800">{lens.name}</div>
-                                                <div className="text-gray-500">SPH: {formatSPH(lens.specs?.sph)} | CYL: {lens.specs?.cyl}</div>
-                                                {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
-                                                {lens.specs?.note && <div className="text-blue-600 text-[10px] mt-1 truncate" title={lens.specs.note}>📝 {lens.specs.note}</div>}
-                                                <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
-                                                <div className="text-gray-400">Kho: {lens.quantity}</div>
-
-                                                {/* Nút tăng giảm số lượng */}
-                                                <div className="flex items-center justify-between mt-2 border-t pt-2">
-                                                   {qty === 0 ? (
-                                                      <button
-                                                         onClick={() => addToCart(lens)}
-                                                         className="w-full py-1 bg-brand-600 text-white rounded text-xs font-bold hover:bg-brand-700"
-                                                      >
-                                                         + Them vao don
-                                                      </button>
-                                                   ) : (
-                                                      <div className="flex items-center gap-2 w-full justify-center">
-                                                         <button
-                                                            onClick={() => updateCartQuantity(lens.id, qty - 1)}
-                                                            className="w-7 h-7 bg-red-100 text-red-600 rounded-full font-bold hover:bg-red-200"
-                                                         >
-                                                            -
-                                                         </button>
-                                                         <span className="font-bold text-lg min-w-[24px] text-center">{qty}</span>
-                                                         <button
-                                                            onClick={() => updateCartQuantity(lens.id, qty + 1)}
-                                                            className="w-7 h-7 bg-green-100 text-green-600 rounded-full font-bold hover:bg-green-200"
-                                                         >
-                                                            +
-                                                         </button>
+                                    <p className="text-sm font-medium text-gray-700 mb-2">Tròng mắt phải (OD) — chọn riêng:</p>
+                                    {groupLensesByPrice(suggestedLensesOD).map(group => (
+                                       <div key={`od-price-${group.price}`} className="mb-2">
+                                          <p className="text-xs font-bold text-brand-700 mb-1">Giá: {group.price.toLocaleString('vi-VN')} đ</p>
+                                          <div className="flex gap-2 overflow-x-auto pb-2">
+                                             {group.items.map(lens => {
+                                                const qty = getCartQty(lens.id, 'OD');
+                                                return (
+                                                   <div key={`od-${lens.id}`} className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs">
+                                                      <div className="font-bold text-gray-800">{lens.name}</div>
+                                                      <div className="text-gray-500">Mã: {lens.code} | SPH: {formatSPH(lens.specs?.sph)} | CYL: {lens.specs?.cyl}</div>
+                                                      <div className="flex items-center gap-2 mt-2 border-t pt-2 justify-center">
+                                                         {qty === 0 ? (
+                                                            <button onClick={() => addSingleEyeLens(lens, 'OD', 1)}
+                                                               className="w-full py-1 bg-brand-600 text-white rounded text-xs font-bold hover:bg-brand-700 cursor-pointer">+ Thêm OD</button>
+                                                         ) : (
+                                                            <>
+                                                               <button onClick={() => adjustSingleEyeQty(lens, 'OD', -1)}
+                                                                  className="w-7 h-7 bg-red-100 text-red-600 rounded-full font-bold cursor-pointer">-</button>
+                                                               <span className="font-bold text-lg min-w-[1.5rem] text-center">{qty}</span>
+                                                               <button onClick={() => adjustSingleEyeQty(lens, 'OD', 1)}
+                                                                  className="w-7 h-7 bg-green-100 text-green-600 rounded-full font-bold cursor-pointer">+</button>
+                                                            </>
+                                                         )}
                                                       </div>
-                                                   )}
-                                                </div>
-                                             </div>
-                                          );
-                                       })}
-                                    </div>
+                                                   </div>
+                                                );
+                                             })}
+                                          </div>
+                                       </div>
+                                    ))}
                                  </div>
                               )}
 
                               {suggestedLensesOS.length > 0 && (
                                  <div>
-                                    <p className="text-sm font-medium text-gray-700 mb-2">Trong mat trai (OS):</p>
-                                    <div className="flex gap-2 overflow-x-auto pb-2">
-                                       {suggestedLensesOS.map(lens => {
-                                          const inCart = cart.find(c => c.item.id === lens.id);
-                                          const qty = inCart?.qty || 0;
-                                          return (
-                                             <div
-                                                key={lens.id}
-                                                className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs"
-                                             >
-                                                <div className="font-bold text-gray-800">{lens.name}</div>
-                                                <div className="text-gray-500">SPH: {formatSPH(lens.specs?.sph)} | CYL: {lens.specs?.cyl}</div>
-                                                {lens.specs?.add && <div className="text-gray-500">ADD: {lens.specs.add}</div>}
-                                                {lens.specs?.note && <div className="text-blue-600 text-[10px] mt-1 truncate" title={lens.specs.note}>📝 {lens.specs.note}</div>}
-                                                <div className="text-brand-600 font-bold mt-1">{lens.price.toLocaleString()} d</div>
-                                                <div className="text-gray-400">Kho: {lens.quantity}</div>
-
-                                                {/* Nút tăng giảm số lượng */}
-                                                <div className="flex items-center justify-between mt-2 border-t pt-2">
-                                                   {qty === 0 ? (
-                                                      <button
-                                                         onClick={() => addToCart(lens)}
-                                                         className="w-full py-1 bg-brand-600 text-white rounded text-xs font-bold hover:bg-brand-700"
-                                                      >
-                                                         + Them vao don
-                                                      </button>
-                                                   ) : (
-                                                      <div className="flex items-center gap-2 w-full justify-center">
-                                                         <button
-                                                            onClick={() => updateCartQuantity(lens.id, qty - 1)}
-                                                            className="w-7 h-7 bg-red-100 text-red-600 rounded-full font-bold hover:bg-red-200"
-                                                         >
-                                                            -
-                                                         </button>
-                                                         <span className="font-bold text-lg min-w-[24px] text-center">{qty}</span>
-                                                         <button
-                                                            onClick={() => updateCartQuantity(lens.id, qty + 1)}
-                                                            className="w-7 h-7 bg-green-100 text-green-600 rounded-full font-bold hover:bg-green-200"
-                                                         >
-                                                            +
-                                                         </button>
+                                    <p className="text-sm font-medium text-gray-700 mb-2">Tròng mắt trái (OS) — chọn riêng:</p>
+                                    {groupLensesByPrice(suggestedLensesOS).map(group => (
+                                       <div key={`os-price-${group.price}`} className="mb-2">
+                                          <p className="text-xs font-bold text-brand-700 mb-1">Giá: {group.price.toLocaleString('vi-VN')} đ</p>
+                                          <div className="flex gap-2 overflow-x-auto pb-2">
+                                             {group.items.map(lens => {
+                                                const qty = getCartQty(lens.id, 'OS');
+                                                return (
+                                                   <div key={`os-${lens.id}`} className="min-w-[180px] bg-white p-2 rounded shadow-sm border text-xs">
+                                                      <div className="font-bold text-gray-800">{lens.name}</div>
+                                                      <div className="text-gray-500">Mã: {lens.code} | SPH: {formatSPH(lens.specs?.sph)} | CYL: {lens.specs?.cyl}</div>
+                                                      <div className="flex items-center gap-2 mt-2 border-t pt-2 justify-center">
+                                                         {qty === 0 ? (
+                                                            <button onClick={() => addSingleEyeLens(lens, 'OS', 1)}
+                                                               className="w-full py-1 bg-brand-600 text-white rounded text-xs font-bold hover:bg-brand-700 cursor-pointer">+ Thêm OS</button>
+                                                         ) : (
+                                                            <>
+                                                               <button onClick={() => adjustSingleEyeQty(lens, 'OS', -1)}
+                                                                  className="w-7 h-7 bg-red-100 text-red-600 rounded-full font-bold cursor-pointer">-</button>
+                                                               <span className="font-bold text-lg min-w-[1.5rem] text-center">{qty}</span>
+                                                               <button onClick={() => adjustSingleEyeQty(lens, 'OS', 1)}
+                                                                  className="w-7 h-7 bg-green-100 text-green-600 rounded-full font-bold cursor-pointer">+</button>
+                                                            </>
+                                                         )}
                                                       </div>
-                                                   )}
-                                                </div>
-                                             </div>
-                                          );
-                                       })}
-                                    </div>
+                                                   </div>
+                                                );
+                                             })}
+                                          </div>
+                                       </div>
+                                    ))}
                                  </div>
                               )}
                            </div>
@@ -620,10 +664,10 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                         {/* Frame Search */}
                         <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 mb-4">
-                           <h4 className="font-bold text-orange-800 mb-2">Tim gong kinh theo ma:</h4>
+                           <h4 className="font-bold text-orange-800 mb-2">Tìm gọng kính theo mã:</h4>
                            <div className="flex gap-2">
                               <input
-                                 placeholder="Nhap ma gong kinh..."
+                                 placeholder="Nhập mã gọng kính..."
                                  className="flex-1 border p-2 rounded"
                                  value={frameSearchCode}
                                  onChange={(e) => setFrameSearchCode(e.target.value)}
@@ -671,7 +715,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                            <table className="w-full">
                               <thead className="bg-gray-50 sticky top-0">
                                  <tr>
-                                    <th className="text-left p-2">San pham</th>
+                                    <th className="text-left p-2">Sản phẩm</th>
                                     <th className="text-center p-2">SL</th>
                                     <th className="text-right p-2">Don gia</th>
                                     <th className="text-right p-2">Thanh tien</th>
@@ -685,9 +729,10 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                     </tr>
                                  )}
                                  {cart.map((c, idx) => (
-                                    <tr key={idx} className="border-b">
+                                    <tr key={c.cartKey} className="border-b">
                                        <td className="p-2">
                                           {c.item.name}
+                                          {c.eye && <span className="text-xs bg-purple-100 text-purple-600 px-1 ml-1 rounded">{c.eye}</span>}
                                           <span className="text-xs text-gray-400 ml-1">({c.item.code})</span>
                                           {c.item.category === 'lens' && <span className="text-xs bg-blue-100 text-blue-600 px-1 ml-1 rounded">Trong</span>}
                                           {c.item.category === 'frame' && <span className="text-xs bg-orange-100 text-orange-600 px-1 ml-1 rounded">Gong</span>}
@@ -699,9 +744,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                              min="1"
                                              onChange={(e) => {
                                                 const newQty = parseInt(e.target.value) || 1;
-                                                const newCart = [...cart];
-                                                newCart[idx].qty = newQty;
-                                                setCart(newCart);
+                                                updateCartQuantity(c.cartKey, newQty);
                                              }}
                                           />
                                        </td>
@@ -709,7 +752,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                        <td className="p-2 text-right font-bold">{(c.item.price * c.qty).toLocaleString()}</td>
                                        <td className="p-2">
                                           <button
-                                             onClick={() => removeFromCart(c.item.id)}
+                                             onClick={() => removeFromCart(c.cartKey)}
                                              className="text-red-500 hover:bg-red-50 p-1 rounded"
                                           >
                                              <X size={16} />
@@ -749,14 +792,14 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                            </div>
 
                            <button onClick={handleCheckout} className="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 flex justify-center items-center gap-2 mt-4">
-                              <Printer /> Thanh Toan & In Hoa Don
+                              <Printer /> Thanh toán & In hóa đơn
                            </button>
                         </div>
                      </>
                   ) : (
                      <div className="text-center text-gray-500 mt-20">
                         <Glasses size={48} className="mx-auto mb-2 opacity-50" />
-                        <p>Chon benh nhan de tao hoa don kinh</p>
+                        <p>Chọn bệnh nhân để tạo hóa đơn kính</p>
                      </div>
                   )}
                </div>
@@ -779,7 +822,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
          {activeTab === 'inventory' && (
             // Inventory Tab
-            <div className="bg-white rounded-xl shadow-sm p-6 h-full overflow-hidden flex flex-col">
+            <div className="clinic-card p-6 h-full overflow-hidden flex flex-col">
                {/* Category Tabs */}
                <div className="flex gap-2 mb-4 border-b pb-4">
                   <button
@@ -1071,25 +1114,25 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
          {/* Invoice History Tab */}
          {activeTab === 'invoices' && (
-            <div className="bg-white rounded-xl shadow-sm p-6 flex-1 overflow-y-auto">
+            <div className="clinic-card p-6 flex-1 overflow-y-auto">
                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold text-gray-800">đŸ“ Lich Su Hoa Don & Thong Ke Doanh Thu</h3>
+                  <h3 className="text-xl font-bold text-gray-800">Lịch sử hóa đơn & Thống kê doanh thu</h3>
                </div>
 
                {/* Filter & Stats */}
                <div className="grid grid-cols-3 gap-4 mb-6">
                   <div>
-                     <label className="block text-sm font-medium mb-1">Tim kiem</label>
+                     <label className="block text-sm font-medium mb-1">Tìm kiếm</label>
                      <input
                         type="text"
-                        placeholder="Ten khach hang..."
+                        placeholder="Tên khách hàng..."
                         className="w-full border rounded p-2"
                         value={invoiceSearch}
                         onChange={e => setInvoiceSearch(e.target.value)}
                      />
                   </div>
                   <div>
-                     <label className="block text-sm font-medium mb-1">Thang</label>
+                     <label className="block text-sm font-medium mb-1">Tháng</label>
                      <input
                         type="month"
                         className="w-full border rounded p-2"
@@ -1098,12 +1141,12 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                      />
                   </div>
                   <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                     <div className="text-xs text-blue-600">Tong hoa don thang</div>
+                     <div className="text-xs text-blue-600">Tổng hóa đơn tháng</div>
                      <div className="text-xl font-bold text-blue-700">
                         {invoices.filter(inv => {
                            const d = new Date(inv.date);
                            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === invoiceMonth;
-                        }).length} hoa don
+                        }).length} hóa đơn
                      </div>
                   </div>
                </div>
@@ -1112,11 +1155,11 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                <table className="w-full text-left">
                   <thead className="bg-gray-50">
                      <tr>
-                        <th className="p-3">Ngay</th>
-                        <th className="p-3">Khach hang</th>
-                        <th className="p-3">San pham</th>
-                        <th className="p-3 text-right">Tong tien</th>
-                        <th className="p-3 text-center">Tac vu</th>
+                        <th className="p-3">Ngày</th>
+                        <th className="p-3">Khách hàng</th>
+                        <th className="p-3">Sản phẩm</th>
+                        <th className="p-3 text-right">Tổng tiền</th>
+                        <th className="p-3 text-center">Tác vụ</th>
                      </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -1205,7 +1248,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                   <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl">
                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold">đŸ“‹ Chi Tiet Hoa Don</h3>
+                        <h3 className="text-xl font-bold">Chi tiết hóa đơn</h3>
                         <button onClick={() => setViewingInvoice(null)} className="text-gray-500 hover:text-gray-800">
                            <X size={24} />
                         </button>
@@ -1227,7 +1270,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                      </div>
 
                      <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                        <h4 className="font-bold mb-2">San pham:</h4>
+                        <h4 className="font-bold mb-2">Sản phẩm:</h4>
                         {viewingInvoice.items.map((item: any, i: number) => (
                            <div key={i} className="flex justify-between py-1">
                               <span>{item.name} x{item.quantity}</span>
@@ -1276,7 +1319,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                   <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold">âœï¿½  Sua Hoa Don</h3>
+                        <h3 className="text-xl font-bold">Sửa hóa đơn</h3>
                         <button onClick={() => setEditingInvoice(null)} className="text-gray-500 hover:text-gray-800">
                            <X size={24} />
                         </button>
@@ -1293,7 +1336,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         </div>
 
                         <div>
-                           <label className="block text-sm font-medium mb-2">San pham:</label>
+                           <label className="block text-sm font-medium mb-2">Sản phẩm:</label>
                            {editingInvoice.items.map((item: any, i: number) => (
                               <div key={i} className="flex gap-2 mb-2 items-center bg-gray-50 p-2 rounded">
                                  <span className="flex-1 text-sm">{item.name}</span>
@@ -1372,7 +1415,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
             <div className="print-area hidden print:block" style={{ width: '58mm', fontFamily: 'Arial, sans-serif', fontSize: '10px', padding: '2mm' }}>
                {/* Header - Thông tin phòng khám */}
                <div style={{ textAlign: 'center', borderBottom: '1px dashed black', paddingBottom: '3mm', marginBottom: '3mm' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase' }}>{settings.name || 'PHONG KHAM MAT'}</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase' }}>{settings.name || 'PHÒNG KHÁM MẮT'}</div>
                   {settings.doctorName && <div style={{ fontSize: '9px' }}>{settings.doctorName}</div>}
                   {settings.phone && <div style={{ fontSize: '9px' }}>DT: {settings.phone}</div>}
                   <div style={{ fontWeight: 'bold', marginTop: '3mm', fontSize: '11px' }}>HOA DON BAN LE</div>

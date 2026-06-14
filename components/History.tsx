@@ -1,16 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
+import { getLocalDateString } from '../services/utils';
 import { Patient } from '../types';
-import { Search, Eye, FileText, Calendar, Glasses, Printer } from 'lucide-react';
+import { Search, Eye, FileText, Calendar, Glasses, Printer, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PageHeader } from './ui/PageHeader';
+import { Button } from './ui/Button';
+import { SearchInput } from './ui/SearchInput';
+
+const ITEMS_PER_PAGE = 25;
 
 export const History: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [activeTab, setActiveTab] = useState<'refraction' | 'all'>('refraction');
+  const [periodFilter, setPeriodFilter] = useState<'all' | 'day' | 'week' | 'month'>('month');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [printList, setPrintList] = useState(false);
+  const settings = db.getSettings();
 
   useEffect(() => {
     loadPatients();
+    const handleDbUpdate = () => loadPatients();
+    window.addEventListener('clinic-db-updated', handleDbUpdate);
+    return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
   }, []);
 
   const loadPatients = () => {
@@ -18,19 +31,42 @@ export const History: React.FC = () => {
     setPatients(all.sort((a, b) => b.timestamp - a.timestamp));
   };
 
-  // Lọc bệnh nhân theo tab và tìm kiếm
-  const filtered = patients.filter(p => {
-    // Filter by search term (name or phone)
+  const isInPeriod = (timestamp: number) => {
+    if (periodFilter === 'all') return true;
+    const d = new Date(timestamp);
+    const now = new Date();
+    if (periodFilter === 'day') return getLocalDateString(d) === getLocalDateString(now);
+    if (periodFilter === 'week') {
+      const weekAgo = new Date(now);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return d >= weekAgo;
+    }
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  };
+
+  const filtered = useMemo(() => patients.filter(p => {
     const matchSearch = searchTerm === '' ||
       p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.phone.includes(searchTerm);
-
-    // Filter by tab
+    const matchPeriod = isInPeriod(p.timestamp);
     if (activeTab === 'refraction') {
-      return matchSearch && p.refraction; // Chỉ hiện BN có kết quả khúc xạ
+      return matchSearch && matchPeriod && p.refraction;
     }
-    return matchSearch; // Tab "all" hiện tất cả
-  });
+    return matchSearch && matchPeriod;
+  }), [patients, searchTerm, activeTab, periodFilter]);
+
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(start, start + ITEMS_PER_PAGE);
+  }, [filtered, currentPage]);
+
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, activeTab, periodFilter]);
+
+  const handlePrintList = () => {
+    setPrintList(true);
+    setTimeout(() => { window.print(); setPrintList(false); }, 300);
+  };
 
   const handlePrintRefraction = (p: Patient) => {
     setSelectedPatient(p);
@@ -42,15 +78,25 @@ export const History: React.FC = () => {
   const today = new Date();
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <HistoryIcon /> Lịch Sử Khám
-        </h2>
-      </div>
+    <div className="max-w-7xl mx-auto space-y-6">
+      <PageHeader
+        title="Lịch sử khám"
+        subtitle={`${filtered.length} bệnh nhân`}
+        actions={
+          <>
+            <select className="clinic-input w-auto text-sm" value={periodFilter} onChange={e => setPeriodFilter(e.target.value as any)}>
+              <option value="day">Hôm nay</option>
+              <option value="week">7 ngày</option>
+              <option value="month">Tháng này</option>
+              <option value="all">Tất cả</option>
+            </select>
+            <Button size="sm" icon={Printer} onClick={handlePrintList}>In bảng</Button>
+          </>
+        }
+      />
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm">
+      <div className="clinic-card">
         <div className="flex border-b">
           <button
             onClick={() => setActiveTab('refraction')}
@@ -74,15 +120,11 @@ export const History: React.FC = () => {
 
         <div className="p-6">
           {/* Search */}
-          <div className="mb-4 relative">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={20} />
-            <input
-              placeholder="Tìm kiếm theo tên hoặc số điện thoại..."
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+          <SearchInput
+            placeholder="Tìm kiếm theo tên hoặc số điện thoại..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
 
           {/* Table */}
           <div className="overflow-x-auto">
@@ -99,7 +141,7 @@ export const History: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map(p => (
+                {paginated.map(p => (
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="p-3 text-sm">{new Date(p.timestamp).toLocaleDateString('vi-VN')}</td>
                     <td className="p-3 font-bold text-brand-600">{p.ticketNumber}</td>
@@ -147,6 +189,16 @@ export const History: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-4 mt-4">
+              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}
+                className="p-2 rounded border disabled:opacity-30 hover:bg-gray-50"><ChevronLeft size={20} /></button>
+              <span className="text-sm">Trang {currentPage}/{totalPages}</span>
+              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}
+                className="p-2 rounded border disabled:opacity-30 hover:bg-gray-50"><ChevronRight size={20} /></button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -319,13 +371,14 @@ export const History: React.FC = () => {
             {/* Header */}
             <div className="clearfix mb-4">
               <div className="header-left">
-                <p className="font-bold">PHÒNG KHÁM MẮT NGOÀI GIỜ</p>
-                <p className="font-bold">BSCKII. Hứa Trung Kiên</p>
-                <p className="text-xs">SĐT: 0917416421 – 0849274364</p>
+                <p className="font-bold">{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</p>
+                <p className="font-bold">{settings.doctorName || ''}</p>
+                <p className="text-xs">SĐT: {settings.phone || ''}</p>
               </div>
               <div className="header-right">
-                <p className="font-bold">KHÁM KHÚC XẠ</p>
-                <p className="text-xs">Từ 8h đến 19h, Thứ hai đến Chủ nhật</p>
+                <p className="font-bold">{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</p>
+                <p className="font-bold">{settings.refraction?.header || 'KHÁM KHÚC XẠ'}</p>
+                <p className="text-xs">{settings.refraction?.rightHeader || settings.workingHours || ''}</p>
               </div>
             </div>
 
@@ -481,8 +534,8 @@ export const History: React.FC = () => {
             {/* Disclaimer */}
             <div className="text-xs mb-4 p-2 border rounded">
               <p><strong>Lưu ý:</strong></p>
-              <p>1. Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghỉ của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.</p>
-              <p>2. Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng.</p>
+              <p>{settings.refraction?.disclaimer1 || '1. Khách hàng đã được đeo thử kính...'}</p>
+              <p>{settings.refraction?.disclaimer2 || '2. Khách hàng đã được tư vấn về độ kính phù hợp...'}</p>
             </div>
 
             {/* Signatures */}
@@ -496,6 +549,44 @@ export const History: React.FC = () => {
                 <p className="mt-16">(Ký và ghi rõ họ tên)</p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Printable list table */}
+      {printList && (
+        <div className="print-area">
+          <div style={{ fontFamily: 'Arial, sans-serif', padding: '10mm' }}>
+            <h2 style={{ textAlign: 'center', marginBottom: '5mm' }}>{settings.name} - Lịch sử Khúc xạ</h2>
+            <p style={{ textAlign: 'center', fontSize: '12px', marginBottom: '5mm' }}>
+              {periodFilter === 'day' ? 'Hôm nay' : periodFilter === 'week' ? '7 ngày gần nhất' : periodFilter === 'month' ? 'Tháng này' : 'Tất cả'} | {filtered.length} bệnh nhân
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+              <thead>
+                <tr style={{ background: '#f3f4f6' }}>
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>STT</th>
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>Ngày</th>
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>Họ tên</th>
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>SĐT</th>
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>OD SPH/CYL</th>
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>OS SPH/CYL</th>
+                  <th style={{ border: '1px solid #ccc', padding: '4px' }}>Loại kính</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p, i) => (
+                  <tr key={p.id}>
+                    <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>{i + 1}</td>
+                    <td style={{ border: '1px solid #ccc', padding: '4px' }}>{new Date(p.timestamp).toLocaleDateString('vi-VN')}</td>
+                    <td style={{ border: '1px solid #ccc', padding: '4px' }}>{p.fullName}</td>
+                    <td style={{ border: '1px solid #ccc', padding: '4px' }}>{p.phone}</td>
+                    <td style={{ border: '1px solid #ccc', padding: '4px' }}>{p.refraction ? `${p.refraction.finalRx.od.sph}/${p.refraction.finalRx.od.cyl}` : '-'}</td>
+                    <td style={{ border: '1px solid #ccc', padding: '4px' }}>{p.refraction ? `${p.refraction.finalRx.os.sph}/${p.refraction.finalRx.os.cyl}` : '-'}</td>
+                    <td style={{ border: '1px solid #ccc', padding: '4px' }}>{p.refraction?.finalRx.lensType || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

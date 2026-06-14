@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
+import { isSameLocalDay } from '../services/utils';
 import { Patient } from '../types';
 import { Mic, CheckCircle, Trash2, ArrowRight, Clock, Eye } from 'lucide-react';
 
@@ -9,15 +10,19 @@ export const Doctor: React.FC = () => {
 
   useEffect(() => {
     loadPatients();
+    const handleDbUpdate = () => loadPatients();
+    window.addEventListener('clinic-db-updated', handleDbUpdate);
     const interval = setInterval(loadPatients, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('clinic-db-updated', handleDbUpdate);
+    };
   }, []);
 
   const loadPatients = () => {
-    // Chỉ lấy bệnh nhân đang chờ khám hoặc đang khám
     const all = db.getPatients();
     setPatients(all.filter(p =>
-      p.status === 'waiting_doctor' || p.status === 'processing_doctor'
+      (p.status === 'waiting_doctor' || p.status === 'processing_doctor') && isSameLocalDay(p.timestamp)
     ).sort((a, b) => a.ticketNumber - b.ticketNumber));
   };
 
@@ -56,10 +61,7 @@ export const Doctor: React.FC = () => {
 
   const handleDelete = (p: Patient) => {
     if (!confirm(`Xóa bệnh nhân ${p.fullName} khỏi danh sách?`)) return;
-
-    // Remove patient from list (mark as completed without medical record)
-    const updated = { ...p, status: 'completed' as const };
-    db.updatePatient(updated);
+    db.deletePatient(p.id);
     setSelectedPatient(null);
     loadPatients();
   };
@@ -67,7 +69,7 @@ export const Doctor: React.FC = () => {
   return (
     <div className="flex h-full gap-6">
       {/* Patient List */}
-      <div className="w-1/3 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+      <div className="w-1/3 clinic-card flex flex-col overflow-hidden">
         <div className="p-4 border-b bg-brand-50">
           <h3 className="font-bold text-brand-800 flex items-center gap-2">
             <Clock size={18} /> Danh sách chờ khám
@@ -132,7 +134,7 @@ export const Doctor: React.FC = () => {
       </div>
 
       {/* Action Panel */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm p-6 flex flex-col">
+      <div className="flex-1 clinic-card p-6 flex flex-col">
         {selectedPatient ? (
           <>
             <div className="border-b pb-4 mb-6">

@@ -30,8 +30,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     // If we're on a protected route and not admin, we show the modal via Context
     // But we need to render *something* behind it, or redirect back if they cancel
     return (
-      <div className="flex items-center justify-center h-full bg-gray-50">
-        <div className="text-gray-400">Vui lòng đăng nhập...</div>
+      <div className="flex items-center justify-center h-full bg-slate-50">
+        <div className="text-slate-400 text-sm font-medium">Vui lòng đăng nhập...</div>
       </div>
     );
   }

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { Patient, RefractionData } from '../types';
-import { Mic, Save, Printer, Search, UserCheck, Clock, CheckCircle } from 'lucide-react';
+import { Mic, Save, Printer, Search, UserCheck, Clock, CheckCircle, Trash2 } from 'lucide-react';
+import { getLocalDateString, isSameLocalDay } from '../services/utils';
 
 const EMPTY_METRIC = { sph: '', cyl: '', axis: '', va: '', add: '' };
 
@@ -90,8 +91,13 @@ export const Refraction: React.FC = () => {
 
   useEffect(() => {
     loadPatients();
+    const handleDbUpdate = () => loadPatients();
+    window.addEventListener('clinic-db-updated', handleDbUpdate);
     const interval = setInterval(loadPatients, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('clinic-db-updated', handleDbUpdate);
+    };
   }, []);
 
   // Update form data when selected patient changes
@@ -115,26 +121,37 @@ export const Refraction: React.FC = () => {
     setPatients(db.getPatients());
   };
 
+  const isTodayPatient = (p: Patient) => isSameLocalDay(p.timestamp);
+
   const getFilteredList = () => {
     switch (activeTab) {
       case 'waiting':
-        return patients.filter(p => p.status === 'waiting_refraction').sort((a, b) => a.ticketNumber - b.ticketNumber);
+        return patients.filter(p => p.status === 'waiting_refraction' && isTodayPatient(p))
+          .sort((a, b) => a.ticketNumber - b.ticketNumber);
       case 'processing':
-        return patients.filter(p => p.status === 'processing_refraction');
+        return patients.filter(p => p.status === 'processing_refraction' && isTodayPatient(p));
       case 'completed':
-        // Show patients who have finished refraction (status is waiting_doctor or later)
-        return patients.filter(p => p.refraction && p.status !== 'waiting_refraction' && p.status !== 'processing_refraction')
-          .sort((a, b) => b.timestamp - a.timestamp); // Newest first
+        return patients.filter(p => p.refraction && p.status !== 'waiting_refraction' && p.status !== 'processing_refraction' && isTodayPatient(p))
+          .sort((a, b) => b.timestamp - a.timestamp);
       default:
         return [];
     }
   };
 
-  // Tìm kiếm bệnh nhân trong toàn bộ data
+  const handleDeletePatient = (p: Patient) => {
+    if (!confirm(`Bạn có chắc muốn xóa bệnh nhân "${p.fullName}"?`)) return;
+    db.deletePatient(p.id);
+    if (selectedPatient?.id === p.id) setSelectedPatient(null);
+    loadPatients();
+    alert('Đã xóa bệnh nhân!');
+  };
+
   const searchResults = searchTerm.length > 1
     ? patients.filter(p =>
-      p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.phone.includes(searchTerm)
+      isTodayPatient(p) && (
+        p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.phone.includes(searchTerm)
+      )
     ).slice(0, 10)
     : [];
 
@@ -205,13 +222,20 @@ export const Refraction: React.FC = () => {
     window.print();
   };
 
-  const settings = db.getSettings();
+  const [settings, setSettings] = useState(db.getSettings());
+  const refractionPrint = settings.refraction;
+
+  useEffect(() => {
+    const refresh = () => setSettings(db.getSettings());
+    window.addEventListener('clinic-db-updated', refresh);
+    return () => window.removeEventListener('clinic-db-updated', refresh);
+  }, []);
   const today = new Date();
 
   return (
     <div className="flex h-full gap-6">
       {/* Sidebar List */}
-      <div className="w-1/4 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+      <div className="w-1/4 clinic-card flex flex-col overflow-hidden">
         {/* Search Box */}
         <div className="p-3 border-b">
           <div className="relative">
@@ -277,15 +301,24 @@ export const Refraction: React.FC = () => {
             >
               <div className="flex justify-between items-center mb-1">
                 <span className="font-bold text-lg text-brand-600">#{p.ticketNumber}</span>
-                {(activeTab === 'waiting' || activeTab === 'processing') && (
+                <div className="flex gap-1">
+                  {(activeTab === 'waiting' || activeTab === 'processing') && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startRefraction(p); }}
+                      className="p-1.5 bg-brand-100 text-brand-600 rounded-full hover:bg-brand-200"
+                      title="Mời bệnh nhân vào (Voice)"
+                    >
+                      <Mic size={16} />
+                    </button>
+                  )}
                   <button
-                    onClick={(e) => { e.stopPropagation(); startRefraction(p); }}
-                    className="p-1.5 bg-brand-100 text-brand-600 rounded-full hover:bg-brand-200"
-                    title="Mời bệnh nhân vào (Voice)"
+                    onClick={(e) => { e.stopPropagation(); handleDeletePatient(p); }}
+                    className="p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200"
+                    title="Xóa bệnh nhân"
                   >
-                    <Mic size={16} />
+                    <Trash2 size={16} />
                   </button>
-                )}
+                </div>
               </div>
               <div className="font-medium text-sm">{p.fullName}</div>
               <div className="text-xs text-gray-500 mt-1">
@@ -299,7 +332,7 @@ export const Refraction: React.FC = () => {
       </div>
 
       {/* Main Work Area */}
-      <div className="flex-1 bg-white rounded-xl shadow-sm p-6 overflow-y-auto">
+      <div className="flex-1 clinic-card p-6 overflow-y-auto">
         {selectedPatient ? (
           <>
             {/* Header với thông tin BN */}
@@ -324,9 +357,12 @@ export const Refraction: React.FC = () => {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-4 flex-wrap">
               <button onClick={handlePrint} className="px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-2">
                 <Printer size={18} /> In Phiếu Khúc Xạ
+              </button>
+              <button onClick={() => handleDeletePatient(selectedPatient)} className="px-3 py-2 border border-red-300 text-red-600 rounded hover:bg-red-50 flex items-center gap-2">
+                <Trash2 size={18} /> Xóa Bệnh Nhân
               </button>
               {activeTab !== 'completed' && (
                 <>
@@ -461,13 +497,17 @@ export const Refraction: React.FC = () => {
                 {/* Header - NO BORDER */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3mm' }}>
                   <div>
-                    <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>PHÒNG KHÁM MẮT NGOÀI GIỜ</div>
-                    <div style={{ fontWeight: 'bold' }}>BSCKII. Hứa Trung Kiên</div>
-                    <div style={{ fontStyle: 'italic', fontSize: '11px' }}>SĐT: 0917416421 – 0849274364</div>
+                    {settings.logoUrl && settings.invoice?.showLogo !== false && (
+                      <img src={settings.logoUrl} alt="Logo" style={{ maxHeight: '15mm', marginBottom: '2mm' }} />
+                    )}
+                    <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</div>
+                    <div style={{ fontWeight: 'bold' }}>{settings.doctorName || ''}</div>
+                    <div style={{ fontStyle: 'italic', fontSize: '11px' }}>SĐT: {settings.phone || ''}{settings.email ? ` – ${settings.email}` : ''}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>KHÁM KHÚC XẠ</div>
-                    <div style={{ fontStyle: 'italic', fontSize: '11px' }}>Từ 8h đến 19h, Thứ hai đến Chủ nhật</div>
+                    <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</div>
+                    <div style={{ fontWeight: 'bold' }}>{refractionPrint?.header || 'KHÁM KHÚC XẠ'}</div>
+                    <div style={{ fontStyle: 'italic', fontSize: '11px' }}>{refractionPrint?.rightHeader || settings.workingHours || 'Từ 8h đến 19h, Thứ hai đến Chủ nhật'}</div>
                   </div>
                 </div>
 
@@ -622,8 +662,8 @@ export const Refraction: React.FC = () => {
                 {/* Lưu ý */}
                 <div style={{ border: '1px solid black', padding: '3mm', marginBottom: '4mm', fontSize: '10px', textAlign: 'justify' }}>
                   <b>Lưu ý:</b><br />
-                  1. Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghỉ của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.<br />
-                  2. Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng.
+                  {refractionPrint?.disclaimer1 || '1. Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghỉ của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.'}<br />
+                  {refractionPrint?.disclaimer2 || '2. Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng.'}
                 </div>
 
                 {/* Chữ ký */}

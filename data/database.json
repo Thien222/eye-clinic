@@ -1,6 +1,710 @@
 {
   "patients": [
     {
+      "id": "test-p01",
+      "ticketNumber": 1,
+      "fullName": "Nguyen Van An - Cho do KX",
+      "dob": 1990,
+      "phone": "0911111001",
+      "address": "Vinh Thuan, Kien Giang",
+      "gender": "Nam",
+      "reason": "Cat kinh",
+      "hasGlasses": true,
+      "notes": "Test: cho do khuc xa",
+      "initialVA": {
+        "od": "5/10",
+        "os": "6/10"
+      },
+      "status": "processing_refraction",
+      "timestamp": 1781402700000,
+      "updatedAt": 1781448057559
+    },
+    {
+      "id": "test-p02",
+      "ticketNumber": 2,
+      "fullName": "Tran Thi Binh - Dang do",
+      "dob": 1985,
+      "phone": "0911111002",
+      "address": "Rach Gia",
+      "gender": "Nữ",
+      "reason": "Cat kinh",
+      "hasGlasses": false,
+      "notes": "Test: dang do khuc xa",
+      "initialVA": {
+        "od": "4/10",
+        "os": "4/10"
+      },
+      "status": "processing_refraction",
+      "timestamp": 1781403300000,
+      "updatedAt": 1781448054487
+    },
+    {
+      "id": "test-p03",
+      "ticketNumber": 3,
+      "fullName": "Le Van Cuong - Cho kham mat",
+      "dob": 1978,
+      "phone": "0911111003",
+      "address": "An Bien",
+      "gender": "Nam",
+      "reason": "Kham mat",
+      "hasGlasses": true,
+      "notes": "Test: cho kham mat",
+      "initialVA": {
+        "od": "7/10",
+        "os": "8/10"
+      },
+      "status": "waiting_doctor",
+      "timestamp": 1781403900000,
+      "updatedAt": 1781447911144
+    },
+    {
+      "id": "test-p04",
+      "ticketNumber": 4,
+      "fullName": "Pham Thi Dung - Cho thanh toan",
+      "dob": 1995,
+      "phone": "0911111004",
+      "address": "Ha Tien",
+      "gender": "Nữ",
+      "reason": "Cat kinh",
+      "hasGlasses": false,
+      "notes": "Test: cho thu ngan - 2 mat KHAC do",
+      "initialVA": {
+        "od": "3/10",
+        "os": "5/10"
+      },
+      "status": "waiting_billing",
+      "timestamp": 1781404500000,
+      "updatedAt": 1781447911144,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "-0.50",
+            "axis": "90",
+            "va": ""
+          },
+          "os": {
+            "sph": "-1.50",
+            "cyl": "0",
+            "axis": "",
+            "va": ""
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "-0.50",
+            "axis": "90",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-1.50",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10"
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "-0.50",
+            "axis": "90",
+            "va": "10/10",
+            "add": "",
+            "pd": "32"
+          },
+          "os": {
+            "sph": "-1.50",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10",
+            "add": "",
+            "pd": "32"
+          },
+          "lensType": "Đơn tròng - nhìn xa",
+          "distance": true,
+          "near": false
+        },
+        "note": "Test OD/OS khac do"
+      }
+    },
+    {
+      "id": "test-p05",
+      "ticketNumber": 5,
+      "fullName": "Hoang Van Em - Cho thanh toan CUNG do",
+      "dob": 2000,
+      "phone": "0911111005",
+      "address": "Phu Quoc",
+      "gender": "Nam",
+      "reason": "Cat kinh",
+      "hasGlasses": false,
+      "notes": "Test: 2 mat CUNG do - goi y cap trong",
+      "initialVA": {
+        "od": "6/10",
+        "os": "6/10"
+      },
+      "status": "waiting_billing",
+      "timestamp": 1781405100000,
+      "updatedAt": 1781447911144,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "0",
+            "axis": "",
+            "va": ""
+          },
+          "os": {
+            "sph": "-2.00",
+            "cyl": "0",
+            "axis": "",
+            "va": ""
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-2.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10"
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10",
+            "add": "",
+            "pd": "64"
+          },
+          "os": {
+            "sph": "-2.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10",
+            "add": "",
+            "pd": "64"
+          },
+          "lensType": "Đơn tròng - nhìn xa",
+          "distance": true,
+          "near": false
+        },
+        "note": "Test cap trong cung gia"
+      }
+    },
+    {
+      "id": "test-p06",
+      "ticketNumber": 6,
+      "fullName": "Vo Thi Phuong - Da hoan thanh",
+      "dob": 1988,
+      "phone": "0911111006",
+      "address": "Can Tho",
+      "gender": "Nữ",
+      "reason": "Cat kinh",
+      "hasGlasses": true,
+      "notes": "Test: da hoan thanh hom nay",
+      "initialVA": {
+        "od": "8/10",
+        "os": "9/10"
+      },
+      "status": "completed",
+      "timestamp": 1781405700000,
+      "updatedAt": 1781447911144,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "-1.00",
+            "cyl": "0",
+            "axis": "",
+            "va": ""
+          },
+          "os": {
+            "sph": "-1.25",
+            "cyl": "0",
+            "axis": "",
+            "va": ""
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "-1.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-1.25",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10"
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "-1.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10",
+            "add": "",
+            "pd": "32"
+          },
+          "os": {
+            "sph": "-1.25",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10",
+            "add": "",
+            "pd": "32"
+          },
+          "lensType": "Đơn tròng - nhìn xa",
+          "distance": true,
+          "near": false
+        },
+        "note": ""
+      }
+    },
+    {
+      "id": "test-p07",
+      "ticketNumber": 99,
+      "fullName": "CU - Hom qua cho do (KHONG hien)",
+      "dob": 1970,
+      "phone": "0911111999",
+      "address": "Test cu",
+      "gender": "Nam",
+      "reason": "Cat kinh",
+      "hasGlasses": false,
+      "notes": "BN hom qua - phai auto complete",
+      "initialVA": {
+        "od": "5/10",
+        "os": "5/10"
+      },
+      "status": "waiting_refraction",
+      "timestamp": 1781317800000,
+      "updatedAt": 1781316000000
+    },
+    {
+      "id": "test-p08",
+      "ticketNumber": 98,
+      "fullName": "CU - Hom qua cho thanh toan",
+      "dob": 1975,
+      "phone": "0911111998",
+      "address": "Test cu",
+      "gender": "Nữ",
+      "reason": "Cat kinh",
+      "hasGlasses": false,
+      "notes": "BN hom qua",
+      "initialVA": {
+        "od": "4/10",
+        "os": "4/10"
+      },
+      "status": "waiting_billing",
+      "timestamp": 1781319600000,
+      "updatedAt": 1781316000000,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "-3.00",
+            "cyl": "0",
+            "axis": "",
+            "va": ""
+          },
+          "os": {
+            "sph": "-3.00",
+            "cyl": "0",
+            "axis": "",
+            "va": ""
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "-3.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-3.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10"
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "-3.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10",
+            "add": "",
+            "pd": "62"
+          },
+          "os": {
+            "sph": "-3.00",
+            "cyl": "0",
+            "axis": "",
+            "va": "10/10",
+            "add": "",
+            "pd": "62"
+          },
+          "lensType": "Đơn tròng - nhìn xa",
+          "distance": true,
+          "near": false
+        },
+        "note": ""
+      }
+    },
+    {
+      "id": "pt9",
+      "ticketNumber": 9,
+      "fullName": "Bùi Văn Ích",
+      "dob": 2005,
+      "phone": "0989012345",
+      "address": "Tân Hiệp, Kiên Giang",
+      "gender": "Nam",
+      "reason": "Cận tăng",
+      "hasGlasses": true,
+      "initialVA": {
+        "od": "2/10",
+        "os": "2/10"
+      },
+      "notes": "Học lớp 12",
+      "status": "completed",
+      "timestamp": 1768035977367,
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "pt8",
+      "ticketNumber": 8,
+      "fullName": "Ngô Thị Hoa",
+      "dob": 1995,
+      "phone": "0978901234",
+      "address": "Kiên Lương, Kiên Giang",
+      "gender": "Nữ",
+      "reason": "Mỏi mắt",
+      "hasGlasses": true,
+      "initialVA": {
+        "od": "6/10",
+        "os": "6/10"
+      },
+      "notes": "Làm văn phòng",
+      "status": "completed",
+      "timestamp": 1768035677367,
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "pt10",
+      "ticketNumber": 10,
+      "fullName": "Lý Thị Kim",
+      "dob": 1972,
+      "phone": "0990123456",
+      "address": "Hòn Đất, Kiên Giang",
+      "gender": "Nữ",
+      "reason": "Viễn thị",
+      "hasGlasses": false,
+      "initialVA": {
+        "od": "5/10",
+        "os": "4/10"
+      },
+      "notes": "",
+      "status": "completed",
+      "timestamp": 1768035077367,
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "pt2",
+      "ticketNumber": 2,
+      "fullName": "Trần Thị Bình",
+      "dob": 1990,
+      "phone": "0912345678",
+      "address": "Rạch Giá, Kiên Giang",
+      "gender": "Nữ",
+      "reason": "Đau mắt",
+      "hasGlasses": false,
+      "initialVA": {
+        "od": "7/10",
+        "os": "6/10"
+      },
+      "notes": "Nhức đầu",
+      "status": "completed",
+      "timestamp": 1768034477367,
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "pt6",
+      "ticketNumber": 6,
+      "fullName": "Võ Thị Phượng",
+      "dob": 1988,
+      "phone": "0956789012",
+      "address": "Phú Quốc, Kiên Giang",
+      "gender": "Nữ",
+      "reason": "Đeo kính áp tròng",
+      "hasGlasses": false,
+      "initialVA": {
+        "od": "2/10",
+        "os": "3/10"
+      },
+      "notes": "",
+      "status": "completed",
+      "timestamp": 1768033877367,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "-5.00",
+            "cyl": "-1.00",
+            "axis": "180",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-4.50",
+            "cyl": "-0.75",
+            "axis": "175",
+            "va": "10/10"
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "-5.00",
+            "cyl": "-1.00",
+            "axis": "180",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-4.50",
+            "cyl": "-0.75",
+            "axis": "175",
+            "va": "10/10"
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "-5.00",
+            "cyl": "-1.00",
+            "axis": "180",
+            "va": "10/10",
+            "pd": "31"
+          },
+          "os": {
+            "sph": "-4.50",
+            "cyl": "-0.75",
+            "axis": "175",
+            "va": "10/10",
+            "pd": "31"
+          },
+          "lensType": "Single",
+          "distance": true,
+          "near": false
+        },
+        "note": ""
+      },
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "pt1",
+      "ticketNumber": 1,
+      "fullName": "Nguyễn Văn An",
+      "dob": 1985,
+      "phone": "0901234567",
+      "address": "Vĩnh Thuận, Kiên Giang",
+      "gender": "Nam",
+      "reason": "Khám mắt",
+      "hasGlasses": true,
+      "initialVA": {
+        "od": "4/10",
+        "os": "5/10"
+      },
+      "notes": "",
+      "status": "completed",
+      "timestamp": 1768032677367,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "-0.50",
+            "axis": "90",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-1.75",
+            "cyl": "-0.25",
+            "axis": "85",
+            "va": "10/10"
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "-0.50",
+            "axis": "90",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-1.75",
+            "cyl": "-0.25",
+            "axis": "85",
+            "va": "10/10"
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "-2.00",
+            "cyl": "-0.50",
+            "axis": "90",
+            "va": "10/10",
+            "pd": "32"
+          },
+          "os": {
+            "sph": "-1.75",
+            "cyl": "-0.25",
+            "axis": "85",
+            "va": "10/10",
+            "pd": "32"
+          },
+          "lensType": "Single",
+          "distance": true,
+          "near": false
+        },
+        "note": ""
+      },
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "pt3",
+      "ticketNumber": 3,
+      "fullName": "Lê Hoàng Cường",
+      "dob": 1978,
+      "phone": "0923456789",
+      "address": "An Biên, Kiên Giang",
+      "gender": "Nam",
+      "reason": "Cận thị",
+      "hasGlasses": true,
+      "initialVA": {
+        "od": "3/10",
+        "os": "3/10"
+      },
+      "notes": "",
+      "status": "completed",
+      "timestamp": 1768029077367,
+      "refraction": {
+        "skiascopy": {
+          "od": {
+            "sph": "-4.00",
+            "cyl": "0",
+            "axis": "0",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-3.75",
+            "cyl": "0",
+            "axis": "0",
+            "va": "10/10"
+          },
+          "cycloplegia": false
+        },
+        "subjective": {
+          "od": {
+            "sph": "-4.00",
+            "cyl": "0",
+            "axis": "0",
+            "va": "10/10"
+          },
+          "os": {
+            "sph": "-3.75",
+            "cyl": "0",
+            "axis": "0",
+            "va": "10/10"
+          }
+        },
+        "finalRx": {
+          "od": {
+            "sph": "-4.00",
+            "cyl": "0",
+            "axis": "0",
+            "va": "10/10",
+            "pd": "33"
+          },
+          "os": {
+            "sph": "-3.75",
+            "cyl": "0",
+            "axis": "0",
+            "va": "10/10",
+            "pd": "33"
+          },
+          "lensType": "Single",
+          "distance": true,
+          "near": false
+        },
+        "note": ""
+      },
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "pt4",
+      "ticketNumber": 4,
+      "fullName": "Phạm Thị Dung",
+      "dob": 1965,
+      "phone": "0934567890",
+      "address": "Gò Quao, Kiên Giang",
+      "gender": "Nữ",
+      "reason": "Lão thị",
+      "hasGlasses": true,
+      "initialVA": {
+        "od": "8/10",
+        "os": "8/10"
+      },
+      "notes": "Khó nhìn gần",
+      "status": "completed",
+      "timestamp": 1767949877367
+    },
+    {
+      "id": "pt5",
+      "ticketNumber": 5,
+      "fullName": "Huỳnh Văn Em",
+      "dob": 2010,
+      "phone": "0945678901",
+      "address": "Hà Tiên, Kiên Giang",
+      "gender": "Nam",
+      "reason": "Kiểm tra thị lực",
+      "hasGlasses": false,
+      "initialVA": {
+        "od": "10/10",
+        "os": "10/10"
+      },
+      "notes": "Học sinh",
+      "status": "completed",
+      "timestamp": 1767863477367
+    },
+    {
+      "id": "pt7",
+      "ticketNumber": 7,
+      "fullName": "Đặng Quốc Giàu",
+      "dob": 1955,
+      "phone": "0967890123",
+      "address": "U Minh Thượng, Kiên Giang",
+      "gender": "Nam",
+      "reason": "Đục thủy tinh thể",
+      "hasGlasses": true,
+      "initialVA": {
+        "od": "2/10",
+        "os": "1/10"
+      },
+      "notes": "Cần chuyển tuyến",
+      "status": "completed",
+      "timestamp": 1767777077367
+    },
+    {
       "id": "id-mjhr3l4d-mpaaq9cyb",
       "ticketNumber": 6,
       "fullName": "a",
@@ -15,53 +719,284 @@
         "od": "",
         "os": ""
       },
-      "status": "waiting_refraction",
-      "timestamp": 1766443916461
+      "status": "completed",
+      "timestamp": 1766443916461,
+      "updatedAt": 1781448018282
+    },
+    {
+      "id": "id-mq2ic908-7ka9fxw7y",
+      "ticketNumber": 1,
+      "fullName": "ádsdsd",
+      "dob": 2000,
+      "phone": "091232243",
+      "address": "đa",
+      "gender": "Nam",
+      "reason": "da",
+      "hasGlasses": true,
+      "notes": "dad",
+      "initialVA": {
+        "od": "10/10",
+        "os": "5/10"
+      },
+      "status": "processing_refraction",
+      "timestamp": 1780759687832,
+      "updatedAt": 1780759716783
     }
   ],
-  "inventory": [],
-  "invoices": [],
+  "inventory": [
+    {
+      "id": "test-frame-1",
+      "code": "GONG-001",
+      "category": "frame",
+      "name": "Gong Titan Xanh",
+      "specs": {
+        "material": "Titan"
+      },
+      "costPrice": 200000,
+      "price": 450000,
+      "quantity": 8,
+      "minStock": 2
+    },
+    {
+      "id": "test-frame-2",
+      "code": "GONG-002",
+      "category": "frame",
+      "name": "Gong Nhua Den",
+      "specs": {
+        "material": "Plastic"
+      },
+      "costPrice": 80000,
+      "price": 250000,
+      "quantity": 15,
+      "minStock": 3
+    },
+    {
+      "id": "test-lens-cheap",
+      "code": "LENS-CHEAP",
+      "category": "lens",
+      "name": "Trong gia re -2.00",
+      "specs": {
+        "sph": -2,
+        "cyl": 0,
+        "material": "1.56",
+        "type": "single"
+      },
+      "costPrice": 80000,
+      "price": 150000,
+      "quantity": 30,
+      "minStock": 5
+    },
+    {
+      "id": "test-lens-od",
+      "code": "LENS-OD-200",
+      "category": "lens",
+      "name": "Essilor Crizal OD",
+      "specs": {
+        "sph": -2,
+        "cyl": -0.5,
+        "material": "1.56",
+        "type": "single"
+      },
+      "costPrice": 180000,
+      "price": 280000,
+      "quantity": 20,
+      "minStock": 5
+    },
+    {
+      "id": "test-lens-os",
+      "code": "LENS-OS-150",
+      "category": "lens",
+      "name": "Essilor Crizal OS",
+      "specs": {
+        "sph": -1.5,
+        "cyl": 0,
+        "material": "1.56",
+        "type": "single"
+      },
+      "costPrice": 180000,
+      "price": 280000,
+      "quantity": 20,
+      "minStock": 5
+    },
+    {
+      "id": "test-lens-pair-a",
+      "code": "LENS-PAIR-A",
+      "category": "lens",
+      "name": "Chemi U2 Cap A",
+      "specs": {
+        "sph": -2,
+        "cyl": 0,
+        "material": "1.60",
+        "type": "single"
+      },
+      "costPrice": 120000,
+      "price": 280000,
+      "quantity": 15,
+      "minStock": 5
+    },
+    {
+      "id": "test-lens-pair-b",
+      "code": "LENS-PAIR-B",
+      "category": "lens",
+      "name": "Chemi U2 Cap B",
+      "specs": {
+        "sph": -2,
+        "cyl": 0,
+        "material": "1.60",
+        "type": "single"
+      },
+      "costPrice": 120000,
+      "price": 280000,
+      "quantity": 15,
+      "minStock": 5
+    },
+    {
+      "id": "test-lens-premium",
+      "code": "LENS-PREMIUM",
+      "category": "lens",
+      "name": "Hoya Premium -2.00",
+      "specs": {
+        "sph": -2,
+        "cyl": 0,
+        "material": "1.67",
+        "type": "single"
+      },
+      "costPrice": 400000,
+      "price": 650000,
+      "quantity": 10,
+      "minStock": 3
+    },
+    {
+      "id": "test-med-1",
+      "code": "MED-001",
+      "category": "medicine",
+      "name": "V.Rohto",
+      "costPrice": 35000,
+      "price": 50000,
+      "quantity": 50,
+      "minStock": 10
+    }
+  ],
+  "invoices": [
+    {
+      "id": "test-inv-1",
+      "patientId": "test-p06",
+      "patientName": "Vo Thi Phuong",
+      "patientPhone": "0911111006",
+      "items": [
+        {
+          "itemId": "test-lens-od",
+          "name": "Essilor Crizal OD (OD)",
+          "quantity": 1,
+          "costPrice": 180000,
+          "price": 280000,
+          "isLens": true,
+          "eye": "OD"
+        },
+        {
+          "itemId": "test-frame-1",
+          "name": "Gong Titan Xanh",
+          "quantity": 1,
+          "costPrice": 200000,
+          "price": 450000,
+          "isLens": false
+        }
+      ],
+      "subtotal": 730000,
+      "discount": 30000,
+      "surcharge": 50000,
+      "total": 750000,
+      "profit": 300000,
+      "date": 1781406600000
+    },
+    {
+      "id": "test-inv-2",
+      "patientId": "test-p08",
+      "patientName": "CU - Hom qua",
+      "patientPhone": "0911111998",
+      "items": [
+        {
+          "itemId": "test-lens-pair-a",
+          "name": "Chemi U2 Cap A (OD)",
+          "quantity": 1,
+          "costPrice": 120000,
+          "price": 280000,
+          "isLens": true,
+          "eye": "OD"
+        },
+        {
+          "itemId": "test-lens-pair-b",
+          "name": "Chemi U2 Cap B (OS)",
+          "quantity": 1,
+          "costPrice": 120000,
+          "price": 280000,
+          "isLens": true,
+          "eye": "OS"
+        },
+        {
+          "itemId": "test-frame-2",
+          "name": "Gong Nhua Den",
+          "quantity": 1,
+          "costPrice": 80000,
+          "price": 250000,
+          "isLens": false
+        }
+      ],
+      "subtotal": 810000,
+      "discount": 0,
+      "surcharge": 0,
+      "total": 810000,
+      "profit": 370000,
+      "date": 1781321400000
+    }
+  ],
   "settings": {
-    "name": "Phong Kham Mat Ngoai Gio",
-    "doctorName": "BSCKII. Hua Trung Kien",
-    "address": "Vinh Thuan - Kien Giang",
-    "phone": "0917416421",
-    "email": "huatrungkien@gmail.com",
-    "workingHours": "Từ 8h đến 19h, Thứ hai đến Chủ nhật",
+    "name": "PHONG KHAM MAT TEST thiện",
+    "doctorName": "BSCKII. Test Bac Si aaaaa",
+    "address": "Vinh Thuan - Kien Giang (TEST) okbayby",
+    "phone": "0917-TEST-00144",
+    "email": "test@eyeclinic.localaaaa",
+    "workingHours": "8h-19h, T2-CN 6666",
     "vat": {
       "enabled": false,
       "rate": 10
     },
     "invoice": {
-      "header": "HÓA ĐƠN BÁN LẺ",
-      "footer": "Cảm ơn quý khách!",
+      "header": "HOA DON TEST",
+      "footer": "Cam on quy khach - TEST!",
       "showLogo": false
     },
     "ticket": {
-      "header": "PHÒNG KHÁM MẮT NGOÀI GIỜ",
-      "subHeader": "BSCKII. Hứa Trung Kiên",
-      "note": "Khách hàng vui lòng chờ đến STT",
-      "footer": "Phiếu có hiệu lực trong ngày"
+      "header": "PK MAT TEST",
+      "subHeader": "BS. Test",
+      "note": "Vui long cho den STT",
+      "footer": "Phieu co hieu luc trong ngay"
     },
     "refraction": {
-      "header": "PHÒNG KHÁM MẮT NGOÀI GIỜ",
-      "rightHeader": "KHÁM KHÚC XẠ",
-      "disclaimer1": "Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghỉ của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.",
-      "disclaimer2": "Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng."
+      "header": "PHONG KHAM MAT TEST",
+      "rightHeader": "KHAM KHUC XA - TEST",
+      "disclaimer1": "Luu y test 1: Khach hang da duoc deo thu kinh.",
+      "disclaimer2": "Luu y test 2: Khach hang da duoc tu van do kinh."
     },
     "backup": {
-      "path": "D:\\test-backup",
-      "maxFiles": 10,
+      "path": "",
+      "maxFiles": 20,
       "autoBackupOnClose": true,
       "autoBackupInterval": 4
     },
     "printTemplates": {
-      "receiptHeader": "HOA DON BAN LE",
-      "receiptFooter": "Cam on quy khach!",
-      "prescriptionHeader": "DON KINH THUOC",
-      "prescriptionFooter": "Bac si / KTV Khuc Xa"
+      "receiptHeader": "HOA DON TEST",
+      "receiptFooter": "Cam on!",
+      "prescriptionHeader": "PHIEU KX",
+      "prescriptionFooter": "Bac si"
     },
-    "adminPassword": "admin123",
+    "settingsUpdatedAt": 1781449327446,
+    "logoUrl": "",
     "id": "main"
+  },
+  "syncMeta": {
+    "version": 15,
+    "lastUpdated": 1781450075705,
+    "deletedPatientIds": []
   }
 }

@@ -61,8 +61,15 @@ export interface Patient {
   notes: string;
   status: 'waiting_refraction' | 'processing_refraction' | 'waiting_doctor' | 'processing_doctor' | 'waiting_billing' | 'completed';
   timestamp: number;
+  updatedAt?: number;
   refraction?: RefractionData;
   medical?: MedicalRecord;
+}
+
+export interface SyncMeta {
+  version: number;
+  lastUpdated: number;
+  deletedPatientIds: string[];
 }
 
 export interface InventoryItem {
@@ -99,6 +106,7 @@ export interface Invoice {
     costPrice: number; // Giá nhập
     price: number; // Giá bán
     isLens?: boolean;
+    eye?: 'OD' | 'OS';
   }[];
   subtotal: number;
   discount: number; // Voucher
@@ -109,6 +117,7 @@ export interface Invoice {
 }
 
 export interface ClinicSettings {
+  settingsUpdatedAt?: number;
   name: string;
   adminPassword?: string;
   doctorName?: string;

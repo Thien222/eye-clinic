@@ -1,5 +1,20 @@
 import Dexie, { Table } from 'dexie';
-import { Patient, InventoryItem, Invoice, ClinicSettings } from '../types';
+import { Patient, InventoryItem, Invoice, ClinicSettings, SyncMeta } from '../types';
+import { getLocalDateString, isLikelySeedData } from './utils';
+import {
+    DEFAULT_SYNC_META,
+    mergeSyncMeta,
+    applyTombstones,
+    mergePatients,
+    mergeInventory,
+    mergeInvoices,
+    computeDataHash,
+    sanitizeIncomingData
+} from './syncHelpers';
+
+export type ConnectionStatus = 'connected' | 'disconnected' | 'syncing' | 'offline';
+
+const SYNC_META_KEY = 'syncMeta';
 
 // ============ INITIAL DATA ============
 const INITIAL_INVENTORY: InventoryItem[] = [
@@ -62,10 +77,21 @@ class DatabaseService {
 
     // Socket.io connection
     private socket: any = null;
+    private _syncReady = false;
+    private _syncMeta: SyncMeta = { ...DEFAULT_SYNC_META };
+    private _connectionStatus: ConnectionStatus = 'offline';
+    private _dataHash = '';
+    private _pollingInterval: ReturnType<typeof setInterval> | null = null;
+    private _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+    private _pendingPush = false;
+    private _pushInFlight = false;
 
     constructor() {
         this.dexieDb = new EyeClinicDatabase();
         this._initPromise = this.initialize();
+        if (typeof window !== 'undefined') {
+            window.addEventListener('beforeunload', () => this.flushToServerSync());
+        }
     }
 
     private async initialize() {
@@ -88,6 +114,8 @@ class DatabaseService {
             }
 
             await this.refreshCache();
+            await this.loadSyncMeta();
+            this.runEndOfDayCleanup();
             this._initialized = true;
             console.log('[DB] IndexedDB initialized successfully');
 
@@ -101,6 +129,7 @@ class DatabaseService {
     private async migrateFromLocalStorage() {
         const prefixes = ['clinic_', 'eyeclinic_'];
         const dataTypes = ['patients', 'inventory', 'invoices'];
+        const keysToRemove: string[] = [];
 
         for (const prefix of prefixes) {
             for (const type of dataTypes) {
@@ -112,9 +141,15 @@ class DatabaseService {
                         const table = (this.dexieDb as any)[type];
                         const count = await table.count();
                         if (count === 0 && parsed.length > 0) {
+                            if (type === 'patients' && isLikelySeedData(parsed)) {
+                                console.warn('[DB] Skipped seed/mock patient migration');
+                                keysToRemove.push(key);
+                                continue;
+                            }
                             await table.bulkAdd(parsed);
                             console.log(`[DB] Migrated ${parsed.length} ${type} from localStorage`);
                         }
+                        keysToRemove.push(key);
                     } catch (e) {
                         console.error(`[DB] Failed to migrate ${type}:`, e);
                     }
@@ -122,7 +157,6 @@ class DatabaseService {
             }
         }
 
-        // Migrate settings
         const settingsData = localStorage.getItem('clinic_settings');
         if (settingsData) {
             try {
@@ -131,8 +165,102 @@ class DatabaseService {
                 if (count === 0) {
                     await this.dexieDb.settings.add({ ...settings, id: 'main' });
                 }
+                keysToRemove.push('clinic_settings');
             } catch (e) { }
         }
+
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+    }
+
+    private async loadSyncMeta() {
+        try {
+            const stored = await this.dexieDb.settings.get(SYNC_META_KEY);
+            if (stored) {
+                const { id, ...meta } = stored as any;
+                this._syncMeta = { ...DEFAULT_SYNC_META, ...meta };
+            }
+        } catch (e) { }
+    }
+
+    private async saveSyncMeta() {
+        await this.dexieDb.settings.put({ ...this._syncMeta, id: SYNC_META_KEY });
+    }
+
+    private setConnectionStatus(status: ConnectionStatus) {
+        if (this._connectionStatus !== status) {
+            this._connectionStatus = status;
+            window.dispatchEvent(new CustomEvent('clinic-connection-status', { detail: status }));
+        }
+    }
+
+    getConnectionStatus(): ConnectionStatus {
+        return this._connectionStatus;
+    }
+
+    private computeDataHash(data: any): string {
+        return computeDataHash(data);
+    }
+
+    private touchSyncMeta() {
+        this._syncMeta.lastUpdated = Date.now();
+        this.saveSyncMeta();
+    }
+
+    private buildExportPayload() {
+        return applyTombstones({
+            patients: this._patientsCache,
+            inventory: this._inventoryCache,
+            invoices: this._invoicesCache,
+            settings: this._settingsCache,
+            syncMeta: this._syncMeta
+        });
+    }
+
+    private flushToServerSync() {
+        try {
+            const payload = this.buildExportPayload();
+            navigator.sendBeacon('/api/database', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+        } catch { /* ignore */ }
+    }
+
+    /** Auto-complete unfinished patients from previous days */
+    runEndOfDayCleanup() {
+        const today = getLocalDateString();
+        const lastEod = localStorage.getItem('clinic_last_eod');
+
+        if (lastEod === today) return;
+
+        const activeStatuses = ['waiting_refraction', 'processing_refraction', 'waiting_doctor', 'processing_doctor', 'waiting_billing'];
+        let changed = false;
+
+        this._patientsCache = this._patientsCache.map(p => {
+            const patientDay = getLocalDateString(p.timestamp);
+            if (patientDay < today && activeStatuses.includes(p.status)) {
+                changed = true;
+                return { ...p, status: 'completed' as const, updatedAt: Date.now() };
+            }
+            return p;
+        });
+
+        if (changed) {
+            this._patientsCache.forEach(p => this.dexieDb.patients.put(p));
+            this.touchSyncMeta();
+            this.emitUpdate();
+            this.notifyUpdate();
+            console.log('[DB] End-of-day: auto-completed stale patients');
+        }
+
+        localStorage.setItem('clinic_last_eod', today);
+    }
+
+    private mergePatientsLocal(local: Patient[], remote: Patient[]): Patient[] {
+        return mergePatients(local, remote, this._syncMeta.deletedPatientIds);
+    }
+
+    private applyIncomingSyncMeta(remote?: SyncMeta) {
+        if (!remote) return;
+        this._syncMeta = mergeSyncMeta(this._syncMeta, remote);
+        this.saveSyncMeta();
     }
 
     private async refreshCache() {
@@ -191,22 +319,40 @@ class DatabaseService {
                 timeout: 10000
             });
 
-            this.socket.on('connect', () => {
+            this.socket.on('connect', async () => {
                 console.log('[Socket] ✓ Connected to server:', this.socket.id);
+                this.setConnectionStatus('connected');
+                await this.pushLocalIfNewer();
+                this.startHeartbeat();
+                setTimeout(() => {
+                    if (!this._syncReady) {
+                        this._syncReady = true;
+                        this.flushPendingPush();
+                        console.log('[Socket] Sync ready (timeout fallback)');
+                    }
+                }, 3000);
             });
 
             this.socket.on('data-updated', async (data: any) => {
                 console.log('[Socket] ⬇ Received data update from server');
-                await this.importDataAsync(data, true); // fromSocket = true, don't emit back
+                this.setConnectionStatus('syncing');
+                await this.importDataAsync(data, true);
+                this._syncReady = true;
+                this.setConnectionStatus('connected');
                 this.notifyUpdate();
             });
 
             this.socket.on('disconnect', (reason: string) => {
                 console.log('[Socket] ✗ Disconnected:', reason);
+                this.setConnectionStatus('disconnected');
+                this.stopHeartbeat();
+                if (!this._pollingInterval) this.startPolling();
             });
 
             this.socket.on('connect_error', (error: any) => {
                 console.log('[Socket] Connection error:', error.message);
+                this.setConnectionStatus('offline');
+                if (!this._pollingInterval) this.startPolling();
             });
         } catch (e) {
             console.log('[DB] Socket init failed, using polling');
@@ -214,57 +360,142 @@ class DatabaseService {
         }
     }
 
+    private startHeartbeat() {
+        if (this._heartbeatInterval) return;
+        this._heartbeatInterval = setInterval(() => this.sendHeartbeat(), 60000);
+    }
+
+    private stopHeartbeat() {
+        if (this._heartbeatInterval) {
+            clearInterval(this._heartbeatInterval);
+            this._heartbeatInterval = null;
+        }
+    }
+
+    private async sendHeartbeat() {
+        try {
+            const payload = this.buildExportPayload();
+            await fetch('/api/sync/heartbeat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...payload, lastUpdated: this._syncMeta.lastUpdated })
+            });
+        } catch { /* offline */ }
+    }
+
+    /** Đẩy dữ liệu local lên server nếu mới hơn (tránh bị snapshot cũ ghi đè) */
+    private async pushLocalIfNewer() {
+        try {
+            const res = await fetch('/api/database');
+            if (!res.ok) return;
+            const server = sanitizeIncomingData(await res.json());
+            const localNewer = (this._syncMeta.lastUpdated || 0) > (server.syncMeta?.lastUpdated || 0)
+                || (this._syncMeta.deletedPatientIds?.length || 0) > (server.syncMeta?.deletedPatientIds?.length || 0);
+            if (localNewer) {
+                console.log('[DB] Local newer than server — pushing before accept');
+                await this.pushToServer();
+            }
+        } catch { /* server offline */ }
+    }
+
+    private flushPendingPush() {
+        if (this._pendingPush) {
+            this._pendingPush = false;
+            this.emitUpdate();
+        }
+    }
+
     private startPolling() {
-        // Fallback polling every 3 seconds
-        setInterval(async () => {
+        if (this._pollingInterval) return;
+        this._pollingInterval = setInterval(async () => {
             try {
                 const res = await fetch('/api/database');
-                if (!res.ok) return;
-                const data = await res.json();
-
-                // Only update if server has data and it's different
-                if (data.patients && data.patients.length > 0) {
-                    const localPatientIds = this._patientsCache.map(p => p.id).sort().join(',');
-                    const remotePatientIds = data.patients.map((p: Patient) => p.id).sort().join(',');
-
-                    if (localPatientIds !== remotePatientIds) {
-                        await this.importDataAsync(data);
-                        this.notifyUpdate();
-                    }
+                if (!res.ok) {
+                    this.setConnectionStatus('offline');
+                    return;
                 }
-            } catch (e) { /* offline */ }
+                const data = await res.json();
+                if (!this._syncReady) {
+                    this._syncReady = true;
+                }
+                const hash = this.computeDataHash(data);
+
+                if (hash !== this._dataHash) {
+                    this.setConnectionStatus('syncing');
+                    await this.importDataAsync(data, true);
+                    this._syncReady = true;
+                    this.setConnectionStatus(this.socket?.connected ? 'connected' : 'disconnected');
+                    this.notifyUpdate();
+                } else if (!this.socket?.connected) {
+                    this.setConnectionStatus('disconnected');
+                }
+            } catch (e) {
+                this.setConnectionStatus('offline');
+            }
         }, 3000);
     }
 
     // Emit update via socket
     private emitUpdate() {
-        const data = {
-            patients: this._patientsCache,
-            inventory: this._inventoryCache,
-            invoices: this._invoicesCache,
-            settings: this._settingsCache
-        };
+        this.touchSyncMeta();
 
-        if (this.socket && this.socket.connected) {
-            console.log('[Socket] ⬆ Sending data update to server, patients:', this._patientsCache.length);
-            this.socket.emit('data-changed', data);
-        } else {
-            console.log('[Socket] Not connected, pushing via REST API');
+        if (!this._syncReady) {
+            this._pendingPush = true;
+            console.log('[Socket] Queued push — waiting for initial server sync');
+            return;
         }
 
-        // Also push to REST API as backup
+        const data = this.buildExportPayload();
+        this._dataHash = this.computeDataHash(data);
+
+        if (this.socket && this.socket.connected) {
+            console.log('[Socket] ⬆ Sending data update to server, patients:', data.patients.length);
+            this.socket.emit('data-changed', data);
+        }
+
         this.pushToServer();
     }
 
     private async pushToServer() {
+        if (this._pushInFlight) return;
+        this._pushInFlight = true;
         try {
-            const data = await this.exportDataAsync();
-            await fetch('/api/database', {
+            const payload = this.buildExportPayload();
+            const res = await fetch('/api/database', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: data
+                body: JSON.stringify(payload)
             });
-        } catch (e) { /* offline */ }
+            if (res.ok) {
+                const result = await res.json();
+                if (result.syncMeta) {
+                    this._syncMeta = mergeSyncMeta(this._syncMeta, result.syncMeta);
+                    this.saveSyncMeta();
+                }
+            }
+        } catch { /* offline */ }
+        finally {
+            this._pushInFlight = false;
+        }
+    }
+
+    /** Xóa BN — gọi API server trước, retry 3 lần */
+    private async syncDeletePatient(id: string): Promise<boolean> {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const res = await fetch(`/api/sync/delete-patient/${encodeURIComponent(id)}`, { method: 'POST' });
+                if (res.ok) {
+                    const result = await res.json();
+                    if (result.syncMeta) {
+                        this._syncMeta = mergeSyncMeta(this._syncMeta, result.syncMeta);
+                        this.saveSyncMeta();
+                    }
+                    return true;
+                }
+            } catch { /* retry */ }
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        }
+        return false;
     }
 
     // Notify UI of updates
@@ -284,20 +515,23 @@ class DatabaseService {
     }
 
     saveSettings(settings: ClinicSettings): void {
-        this._settingsCache = settings;
-        this.dexieDb.settings.put({ ...settings, id: 'main' });
+        const withTs = { ...settings, settingsUpdatedAt: Date.now() };
+        this._settingsCache = withTs;
+        this.dexieDb.settings.put({ ...withTs, id: 'main' });
+        this.touchSyncMeta();
         this.emitUpdate();
         this.notifyUpdate();
     }
 
+    private mergeSettings(local: ClinicSettings | null, remote: ClinicSettings): ClinicSettings {
+        const localTs = local?.settingsUpdatedAt || 0;
+        const remoteTs = remote.settingsUpdatedAt || 0;
+        return remoteTs >= localTs ? remote : (local || remote);
+    }
+
     // ============ EXPORT/IMPORT ============
     exportData(): string {
-        return JSON.stringify({
-            patients: this._patientsCache,
-            inventory: this._inventoryCache,
-            invoices: this._invoicesCache,
-            settings: this._settingsCache
-        });
+        return JSON.stringify(this.buildExportPayload());
     }
 
     async exportDataAsync(): Promise<string> {
@@ -308,13 +542,19 @@ class DatabaseService {
             this.dexieDb.invoices.toArray(),
             this.dexieDb.settings.get('main')
         ]);
-        return JSON.stringify({ patients, inventory, invoices, settings });
+        return JSON.stringify(applyTombstones({
+            patients,
+            inventory,
+            invoices,
+            settings,
+            syncMeta: this._syncMeta
+        }));
     }
 
     importData(jsonString: string): boolean {
         try {
             const data = JSON.parse(jsonString);
-            this.importDataAsync(data);
+            this.importDataAsync(data, false, true);
             return true;
         } catch (e) {
             console.error(e);
@@ -322,35 +562,96 @@ class DatabaseService {
         }
     }
 
-    async importDataAsync(data: any, fromSocket: boolean = false): Promise<boolean> {
+    /** Nạp dữ liệu test từ server hoặc file */
+    async loadTestData(): Promise<boolean> {
+        try {
+            const res = await fetch('/api/test-data/load', { method: 'POST' });
+            if (res.ok) {
+                const result = await res.json();
+                if (result.data) {
+                    await this.importDataAsync(result.data, true, true);
+                    return true;
+                }
+            }
+            const fileRes = await fetch('/data/test-data.json');
+            if (fileRes.ok) {
+                const data = await fileRes.json();
+                await this.importDataAsync(data, false, true);
+                return true;
+            }
+        } catch (e) {
+            console.error('[DB] loadTestData failed:', e);
+        }
+        return false;
+    }
+
+    private sanitizeIncomingData(data: any) {
+        return sanitizeIncomingData(data);
+    }
+
+    async importDataAsync(data: any, fromSocket: boolean = false, forceReplace: boolean = false): Promise<boolean> {
         try {
             await this.ensureReady();
+            data = sanitizeIncomingData(data);
+            data = applyTombstones(data);
 
-            if (data.patients) {
+            this.applyIncomingSyncMeta(data.syncMeta);
+
+            const isStaleSnapshot = fromSocket && !forceReplace
+                && data.syncMeta?.lastUpdated != null
+                && data.syncMeta.lastUpdated < this._syncMeta.lastUpdated
+                && data.syncMeta.version <= this._syncMeta.version;
+
+            if (isStaleSnapshot) {
+                console.log('[DB] Skipped stale snapshot (local lastUpdated newer)');
+            }
+
+            const deletedSet = new Set(this._syncMeta.deletedPatientIds);
+
+            if (data.patients && !isStaleSnapshot) {
+                const filteredRemote = data.patients.filter((p: Patient) => !deletedSet.has(p.id));
+                const merged = (fromSocket && !forceReplace)
+                    ? this.mergePatientsLocal(this._patientsCache, filteredRemote)
+                    : filteredRemote;
+
                 await this.dexieDb.patients.clear();
-                await this.dexieDb.patients.bulkAdd(data.patients);
-                this._patientsCache = data.patients;
-            }
-            if (data.inventory) {
-                await this.dexieDb.inventory.clear();
-                await this.dexieDb.inventory.bulkAdd(data.inventory);
-                this._inventoryCache = data.inventory;
-            }
-            if (data.invoices) {
-                await this.dexieDb.invoices.clear();
-                await this.dexieDb.invoices.bulkAdd(data.invoices);
-                this._invoicesCache = data.invoices;
-            }
-            if (data.settings) {
-                await this.dexieDb.settings.put({ ...data.settings, id: 'main' });
-                this._settingsCache = data.settings;
+                if (merged.length > 0) await this.dexieDb.patients.bulkAdd(merged);
+                this._patientsCache = merged;
             }
 
+            if (data.inventory && !isStaleSnapshot) {
+                const merged = (fromSocket && !forceReplace)
+                    ? mergeInventory(this._inventoryCache, data.inventory)
+                    : data.inventory;
+                await this.dexieDb.inventory.clear();
+                if (merged.length > 0) await this.dexieDb.inventory.bulkAdd(merged);
+                this._inventoryCache = merged;
+            }
+
+            if (data.invoices && !isStaleSnapshot) {
+                const merged = (fromSocket && !forceReplace)
+                    ? mergeInvoices(this._invoicesCache, data.invoices)
+                    : data.invoices;
+                await this.dexieDb.invoices.clear();
+                if (merged.length > 0) await this.dexieDb.invoices.bulkAdd(merged);
+                this._invoicesCache = merged;
+            }
+
+            if (data.settings) {
+                const merged = forceReplace ? data.settings : this.mergeSettings(this._settingsCache, data.settings);
+                await this.dexieDb.settings.put({ ...merged, id: 'main' });
+                this._settingsCache = merged;
+            }
+
+            this._dataHash = this.computeDataHash({ patients: this._patientsCache, syncMeta: this._syncMeta });
             console.log('[DB] Imported data successfully');
 
-            // Only sync to server if NOT from socket (to prevent infinite loop)
-            if (!fromSocket) {
+            if (!fromSocket || forceReplace) {
+                this._syncReady = true;
                 this.emitUpdate();
+            } else {
+                this._syncReady = true;
+                this.flushPendingPush();
             }
             this.notifyUpdate();
 
@@ -372,26 +673,41 @@ class DatabaseService {
     }
 
     addPatient(patient: Patient): void {
-        this._patientsCache.push(patient);
-        this.dexieDb.patients.add(patient);
+        const withTs = { ...patient, updatedAt: Date.now() };
+        this._patientsCache.push(withTs);
+        this.dexieDb.patients.add(withTs);
         this.emitUpdate();
         this.notifyUpdate();
     }
 
     updatePatient(patient: Patient): void {
+        const withTs = { ...patient, updatedAt: Date.now() };
         const index = this._patientsCache.findIndex(p => p.id === patient.id);
         if (index !== -1) {
-            this._patientsCache[index] = patient;
+            this._patientsCache[index] = withTs;
         }
-        this.dexieDb.patients.put(patient);
+        this.dexieDb.patients.put(withTs);
         this.emitUpdate();
         this.notifyUpdate();
     }
 
     deletePatient(id: string): void {
+        if (!this._syncMeta.deletedPatientIds.includes(id)) {
+            this._syncMeta.deletedPatientIds.push(id);
+            if (this._syncMeta.deletedPatientIds.length > 5000) {
+                this._syncMeta.deletedPatientIds = this._syncMeta.deletedPatientIds.slice(-5000);
+            }
+            this.saveSyncMeta();
+        }
         this._patientsCache = this._patientsCache.filter(p => p.id !== id);
         this.dexieDb.patients.delete(id);
-        this.emitUpdate();
+        this.touchSyncMeta();
+        this.syncDeletePatient(id).then(ok => {
+            if (!ok) {
+                console.warn('[DB] Delete API failed — will retry via emitUpdate');
+            }
+            this.emitUpdate();
+        });
         this.notifyUpdate();
     }
 
