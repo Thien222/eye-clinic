@@ -1,23 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { db } from '../services/db';
-import { isSameLocalDay } from '../services/utils';
+import { isSameLocalDay, speak } from '../services/utils';
 import { Patient } from '../types';
 import { Mic, CheckCircle, Trash2, ArrowRight, Clock, Eye } from 'lucide-react';
+import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 
 export const Doctor: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
-  useEffect(() => {
-    loadPatients();
-    const handleDbUpdate = () => loadPatients();
-    window.addEventListener('clinic-db-updated', handleDbUpdate);
-    const interval = setInterval(loadPatients, 5000);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('clinic-db-updated', handleDbUpdate);
-    };
-  }, []);
+  useClinicDbUpdated(() => loadPatients());
 
   const loadPatients = () => {
     const all = db.getPatients();
@@ -27,43 +19,40 @@ export const Doctor: React.FC = () => {
   };
 
   const callPatient = (p: Patient) => {
-    const text = `Mời bệnh nhân số ${p.ticketNumber} vào phòng khám mắt`;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'vi-VN';
-    window.speechSynthesis.speak(utterance);
-
-    // Update status to processing
-    const updated = { ...p, status: 'processing_doctor' as const };
+    // 1) Cập nhật trạng thái + UI TRƯỚC — đảm bảo luôn chuyển sang "Đang khám"
+    const updated = { ...p, status: 'processing_doctor' as const, updatedAt: Date.now() };
     db.updatePatient(updated);
-    loadPatients();
+    setPatients(prev => prev.map(x => x.id === p.id ? updated : x));
     setSelectedPatient(updated);
+    // 2) Đọc loa SAU — lỗi giọng nói (iOS...) không làm hỏng việc chuyển phòng
+    speak(`Mời bệnh nhân số ${p.ticketNumber} vào phòng khám mắt`);
   };
 
   const handleComplete = (p: Patient) => {
     if (!confirm(`Xác nhận hoàn thành khám cho ${p.fullName}?`)) return;
 
-    const updated = { ...p, status: 'completed' as const };
+    const updated = { ...p, status: 'completed' as const, updatedAt: Date.now() };
+    setPatients(prev => prev.filter(x => x.id !== p.id));
+    setSelectedPatient(null);
     db.updatePatient(updated);
     alert('Đã hoàn thành khám bệnh!');
-    setSelectedPatient(null);
-    loadPatients();
   };
 
   const handleTransferToRefraction = (p: Patient) => {
     if (!confirm(`Chuyển ${p.fullName} sang phòng khúc xạ?`)) return;
 
-    const updated = { ...p, status: 'waiting_refraction' as const };
+    const updated = { ...p, status: 'waiting_refraction' as const, updatedAt: Date.now() };
+    setPatients(prev => prev.filter(x => x.id !== p.id));
+    setSelectedPatient(null);
     db.updatePatient(updated);
     alert('Đã chuyển sang phòng khúc xạ!');
-    setSelectedPatient(null);
-    loadPatients();
   };
 
   const handleDelete = (p: Patient) => {
     if (!confirm(`Xóa bệnh nhân ${p.fullName} khỏi danh sách?`)) return;
-    db.deletePatient(p.id);
+    setPatients(prev => prev.filter(x => x.id !== p.id));
     setSelectedPatient(null);
-    loadPatients();
+    db.deletePatient(p.id);
   };
 
   return (

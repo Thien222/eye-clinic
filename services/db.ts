@@ -22,24 +22,24 @@ const INITIAL_INVENTORY: InventoryItem[] = [
     { id: '2', code: 'LENS002', category: 'lens', name: 'Chemi U2', specs: { sph: -2.00, cyl: -0.50, material: '1.60', type: 'single' }, costPrice: 120000, price: 180000, quantity: 7, minStock: 10 },
     { id: '3', code: 'LENS003', category: 'lens', name: 'Hoya BlueControl', specs: { sph: -4.00, cyl: 0, material: '1.67', type: 'single' }, costPrice: 550000, price: 850000, quantity: 20, minStock: 5 },
     { id: '4', code: 'FRAME001', category: 'frame', name: 'Rayban Aviator', specs: { material: 'Metal' }, costPrice: 900000, price: 1500000, quantity: 12, minStock: 3 },
-    { id: '5', code: 'FRAME002', category: 'frame', name: 'Nhua Deo Han Quoc', specs: { material: 'Plastic' }, costPrice: 150000, price: 300000, quantity: 100, minStock: 20 },
+    { id: '5', code: 'FRAME002', category: 'frame', name: 'Nhựa Dẻo Hàn Quốc', specs: { material: 'Plastic' }, costPrice: 150000, price: 300000, quantity: 100, minStock: 20 },
     { id: '6', code: 'MED001', category: 'medicine', name: 'V.Rohto', costPrice: 35000, price: 50000, quantity: 200, minStock: 50 },
     { id: '7', code: 'MED002', category: 'medicine', name: 'Tobradex', costPrice: 60000, price: 85000, quantity: 40, minStock: 10 },
     { id: '8', code: 'MED003', category: 'medicine', name: 'Systane Ultra', costPrice: 85000, price: 120000, quantity: 30, minStock: 10 },
 ];
 
 const DEFAULT_SETTINGS: ClinicSettings = {
-    name: 'Phong Kham Mat Ngoai Gio',
+    name: 'Phòng Khám Mắt Ngoài Giờ',
     adminPassword: 'admin123',
     address: 'Vinh Thuan - Kien Giang',
     phone: '0917416421',
     email: 'huatrungkien@gmail.com',
     doctorName: 'BSCKII. Hua Trung Kien',
     printTemplates: {
-        receiptHeader: 'HOA DON BAN LE',
-        receiptFooter: 'Cam on quy khach!',
-        prescriptionHeader: 'DON KINH THUOC',
-        prescriptionFooter: 'Bac si / KTV Khuc Xa'
+        receiptHeader: 'HÓA ĐƠN BÁN LẺ',
+        receiptFooter: 'Cảm ơn quý khách!',
+        prescriptionHeader: 'ĐƠN KÍNH THUỐC',
+        prescriptionFooter: 'Bác sĩ / KTV Khúc Xạ'
     }
 };
 
@@ -85,6 +85,11 @@ class DatabaseService {
     private _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
     private _pendingPush = false;
     private _pushInFlight = false;
+    private _importQueue: Promise<void> = Promise.resolve();
+    private _lastImportedVersion = 0;
+    /** Sửa cục bộ chưa kịp lên server — snapshot socket không được ghi đè */
+    private _localEdits = new Map<string, number>();
+    private static readonly LOCAL_EDIT_TTL_MS = 8000;
 
     constructor() {
         this.dexieDb = new EyeClinicDatabase();
@@ -115,6 +120,7 @@ class DatabaseService {
 
             await this.refreshCache();
             await this.loadSyncMeta();
+            this.touchLocalDataHash();
             this.runEndOfDayCleanup();
             this._initialized = true;
             console.log('[DB] IndexedDB initialized successfully');
@@ -201,9 +207,96 @@ class DatabaseService {
         return computeDataHash(data);
     }
 
+    private touchLocalDataHash() {
+        this._dataHash = this.computeDataHash({
+            patients: this._patientsCache,
+            inventory: this._inventoryCache,
+            invoices: this._invoicesCache,
+            syncMeta: this._syncMeta
+        });
+    }
+
+    private localEditKey(scope: 'patient' | 'inventory' | 'invoice' | 'settings', id: string): string {
+        return `${scope}:${id}`;
+    }
+
+    private markLocalEdit(scope: 'patient' | 'inventory' | 'invoice' | 'settings', id: string) {
+        this._localEdits.set(this.localEditKey(scope, id), Date.now() + DatabaseService.LOCAL_EDIT_TTL_MS);
+    }
+
+    private isLocalEditGuarded(scope: 'patient' | 'inventory' | 'invoice' | 'settings', id: string): boolean {
+        const key = this.localEditKey(scope, id);
+        const expiry = this._localEdits.get(key);
+        if (!expiry) return false;
+        if (Date.now() > expiry) {
+            this._localEdits.delete(key);
+            return false;
+        }
+        return true;
+    }
+
+    private pruneExpiredLocalEdits() {
+        const now = Date.now();
+        for (const [key, expiry] of this._localEdits) {
+            if (now > expiry) this._localEdits.delete(key);
+        }
+    }
+
+    private applyEditGuards<T extends { id: string }>(
+        merged: T[],
+        localCache: T[],
+        scope: 'patient' | 'inventory' | 'invoice'
+    ): T[] {
+        this.pruneExpiredLocalEdits();
+        const prefix = `${scope}:`;
+        const guardedIds: string[] = [];
+        for (const [key, expiry] of this._localEdits) {
+            if (key.startsWith(prefix) && Date.now() <= expiry) {
+                guardedIds.push(key.slice(prefix.length));
+            }
+        }
+        if (guardedIds.length === 0) return merged;
+
+        const map = new Map(merged.map(item => [item.id, item]));
+        for (const id of guardedIds) {
+            const local = localCache.find(item => item.id === id);
+            if (local) map.set(id, local);
+            else map.delete(id);
+        }
+        return Array.from(map.values());
+    }
+
+    private afterLocalMutation(
+        edits: Array<{ scope: 'patient' | 'inventory' | 'invoice' | 'settings'; id: string }>,
+        persist?: Promise<unknown>
+    ) {
+        for (const { scope, id } of edits) this.markLocalEdit(scope, id);
+        this.touchLocalDataHash();
+        this.notifyUpdate();
+        if (persist !== undefined) this.scheduleEmitAfterDexie(persist);
+    }
+
     private touchSyncMeta() {
+        this._syncMeta.version = (this._syncMeta.version || 0) + 1;
         this._syncMeta.lastUpdated = Date.now();
         this.saveSyncMeta();
+    }
+
+    /** UI cập nhật ngay; đẩy server sau khi Dexie ghi xong */
+    private scheduleEmitAfterDexie(persist: Promise<unknown>): void {
+        void persist
+            .then(() => this.emitUpdate())
+            .catch((e) => {
+                console.error('[DB] Dexie write failed:', e);
+                this.emitUpdate();
+            });
+    }
+
+    private stopPolling() {
+        if (this._pollingInterval) {
+            clearInterval(this._pollingInterval);
+            this._pollingInterval = null;
+        }
     }
 
     private buildExportPayload() {
@@ -254,7 +347,18 @@ class DatabaseService {
     }
 
     private mergePatientsLocal(local: Patient[], remote: Patient[]): Patient[] {
-        return mergePatients(local, remote, this._syncMeta.deletedPatientIds);
+        const merged = mergePatients(local, remote, this._syncMeta.deletedPatientIds);
+        return this.applyEditGuards(merged, this._patientsCache, 'patient');
+    }
+
+    private mergeInventoryLocal(local: InventoryItem[], remote: InventoryItem[]): InventoryItem[] {
+        const merged = mergeInventory(local, remote);
+        return this.applyEditGuards(merged, this._inventoryCache, 'inventory');
+    }
+
+    private mergeInvoicesLocal(local: Invoice[], remote: Invoice[]): Invoice[] {
+        const merged = mergeInvoices(local, remote);
+        return this.applyEditGuards(merged, this._invoicesCache, 'invoice');
     }
 
     private applyIncomingSyncMeta(remote?: SyncMeta) {
@@ -289,13 +393,15 @@ class DatabaseService {
             const socketUrl = `${protocol}//${host}:3001`;
             console.log('[Socket] Connecting to:', socketUrl);
 
-            // Use script tag to load socket.io client
+            // Socket.io client từ server local (không phụ thuộc CDN — nhanh hơn trên LAN)
+            const socketScriptUrl = `${socketUrl}/socket.io/socket.io.min.js`;
+
             if (typeof (window as any).io === 'undefined') {
                 const script = document.createElement('script');
-                script.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+                script.src = socketScriptUrl;
                 script.onload = () => this.initSocket(socketUrl);
                 script.onerror = () => {
-                    console.log('[Socket] Failed to load socket.io, using polling');
+                    console.log('[Socket] Failed to load local socket.io, using polling');
                     this.startPolling();
                 };
                 document.head.appendChild(script);
@@ -315,13 +421,15 @@ class DatabaseService {
             this.socket = (window as any).io(url, {
                 transports: ['websocket', 'polling'],
                 reconnection: true,
-                reconnectionDelay: 1000,
-                timeout: 10000
+                reconnectionDelay: 500,
+                reconnectionDelayMax: 3000,
+                timeout: 8000
             });
 
             this.socket.on('connect', async () => {
                 console.log('[Socket] ✓ Connected to server:', this.socket.id);
                 this.setConnectionStatus('connected');
+                this.stopPolling();
                 await this.pushLocalIfNewer();
                 this.startHeartbeat();
                 setTimeout(() => {
@@ -330,7 +438,7 @@ class DatabaseService {
                         this.flushPendingPush();
                         console.log('[Socket] Sync ready (timeout fallback)');
                     }
-                }, 3000);
+                }, 500);
             });
 
             this.socket.on('data-updated', async (data: any) => {
@@ -339,7 +447,6 @@ class DatabaseService {
                 await this.importDataAsync(data, true);
                 this._syncReady = true;
                 this.setConnectionStatus('connected');
-                this.notifyUpdate();
             });
 
             this.socket.on('disconnect', (reason: string) => {
@@ -448,12 +555,15 @@ class DatabaseService {
         const data = this.buildExportPayload();
         this._dataHash = this.computeDataHash(data);
 
+        // Chọn 1 kênh chính để tránh server xử lý/lưu/broadcast 2 lần:
+        // - Socket khi đã kết nối (realtime, broadcast tức thì).
+        // - REST chỉ làm fallback khi socket chưa kết nối (offline/đang reconnect).
         if (this.socket && this.socket.connected) {
             console.log('[Socket] ⬆ Sending data update to server, patients:', data.patients.length);
             this.socket.emit('data-changed', data);
+        } else {
+            this.pushToServer();
         }
-
-        this.pushToServer();
     }
 
     private async pushToServer() {
@@ -517,10 +627,7 @@ class DatabaseService {
     saveSettings(settings: ClinicSettings): void {
         const withTs = { ...settings, settingsUpdatedAt: Date.now() };
         this._settingsCache = withTs;
-        this.dexieDb.settings.put({ ...withTs, id: 'main' });
-        this.touchSyncMeta();
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'settings', id: 'main' }], this.dexieDb.settings.put({ ...withTs, id: 'main' }));
     }
 
     private mergeSettings(local: ClinicSettings | null, remote: ClinicSettings): ClinicSettings {
@@ -562,6 +669,17 @@ class DatabaseService {
         }
     }
 
+    /** Như importData nhưng ĐỢI ghi xong IndexedDB rồi mới trả về — dùng trước khi reload trang. */
+    async importDataAndWait(jsonString: string): Promise<boolean> {
+        try {
+            const data = JSON.parse(jsonString);
+            return await this.importDataAsync(data, false, true);
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    }
+
     /** Nạp dữ liệu test từ server hoặc file */
     async loadTestData(): Promise<boolean> {
         try {
@@ -590,10 +708,46 @@ class DatabaseService {
     }
 
     async importDataAsync(data: any, fromSocket: boolean = false, forceReplace: boolean = false): Promise<boolean> {
+        let result = false;
+        this._importQueue = this._importQueue
+            .then(() => this.importDataAsyncImpl(data, fromSocket, forceReplace))
+            .then((ok) => { result = ok; })
+            .catch((e) => {
+                console.error('[DB] Import queue error:', e);
+                result = false;
+            });
+        await this._importQueue;
+        return result;
+    }
+
+    private async importDataAsyncImpl(data: any, fromSocket: boolean = false, forceReplace: boolean = false): Promise<boolean> {
         try {
             await this.ensureReady();
             data = sanitizeIncomingData(data);
             data = applyTombstones(data);
+
+            const incomingVersion = data.syncMeta?.version || 0;
+            const incomingHash = this.computeDataHash({
+                patients: data.patients,
+                inventory: data.inventory,
+                invoices: data.invoices,
+                syncMeta: data.syncMeta
+            });
+
+            // Bỏ qua snapshot trùng — tránh ghi đè local & giảm độ trễ UI
+            if (fromSocket && !forceReplace) {
+                if (incomingVersion <= this._lastImportedVersion && incomingHash === this._dataHash) {
+                    console.log('[DB] Skipped duplicate snapshot v' + incomingVersion);
+                    this._syncReady = true;
+                    return true;
+                }
+                if (incomingHash === this._dataHash) {
+                    this.applyIncomingSyncMeta(data.syncMeta);
+                    this._lastImportedVersion = Math.max(this._lastImportedVersion, incomingVersion);
+                    this._syncReady = true;
+                    return true;
+                }
+            }
 
             this.applyIncomingSyncMeta(data.syncMeta);
 
@@ -621,7 +775,7 @@ class DatabaseService {
 
             if (data.inventory && !isStaleSnapshot) {
                 const merged = (fromSocket && !forceReplace)
-                    ? mergeInventory(this._inventoryCache, data.inventory)
+                    ? this.mergeInventoryLocal(this._inventoryCache, data.inventory)
                     : data.inventory;
                 await this.dexieDb.inventory.clear();
                 if (merged.length > 0) await this.dexieDb.inventory.bulkAdd(merged);
@@ -630,7 +784,7 @@ class DatabaseService {
 
             if (data.invoices && !isStaleSnapshot) {
                 const merged = (fromSocket && !forceReplace)
-                    ? mergeInvoices(this._invoicesCache, data.invoices)
+                    ? this.mergeInvoicesLocal(this._invoicesCache, data.invoices)
                     : data.invoices;
                 await this.dexieDb.invoices.clear();
                 if (merged.length > 0) await this.dexieDb.invoices.bulkAdd(merged);
@@ -638,12 +792,26 @@ class DatabaseService {
             }
 
             if (data.settings) {
-                const merged = forceReplace ? data.settings : this.mergeSettings(this._settingsCache, data.settings);
+                const settingsGuarded = fromSocket && !forceReplace && this.isLocalEditGuarded('settings', 'main');
+                let merged: ClinicSettings;
+                if (forceReplace) {
+                    merged = data.settings;
+                } else if (settingsGuarded && this._settingsCache) {
+                    merged = this._settingsCache;
+                } else {
+                    merged = this.mergeSettings(this._settingsCache, data.settings);
+                }
                 await this.dexieDb.settings.put({ ...merged, id: 'main' });
                 this._settingsCache = merged;
             }
 
-            this._dataHash = this.computeDataHash({ patients: this._patientsCache, syncMeta: this._syncMeta });
+            this._dataHash = this.computeDataHash({
+                patients: this._patientsCache,
+                inventory: this._inventoryCache,
+                invoices: this._invoicesCache,
+                syncMeta: this._syncMeta
+            });
+            this._lastImportedVersion = Math.max(this._lastImportedVersion, this._syncMeta.version || 0);
             console.log('[DB] Imported data successfully');
 
             if (!fromSocket || forceReplace) {
@@ -675,9 +843,7 @@ class DatabaseService {
     addPatient(patient: Patient): void {
         const withTs = { ...patient, updatedAt: Date.now() };
         this._patientsCache.push(withTs);
-        this.dexieDb.patients.add(withTs);
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'patient', id: withTs.id }], this.dexieDb.patients.put(withTs));
     }
 
     updatePatient(patient: Patient): void {
@@ -685,10 +851,10 @@ class DatabaseService {
         const index = this._patientsCache.findIndex(p => p.id === patient.id);
         if (index !== -1) {
             this._patientsCache[index] = withTs;
+        } else {
+            this._patientsCache.push(withTs);
         }
-        this.dexieDb.patients.put(withTs);
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'patient', id: withTs.id }], this.dexieDb.patients.put(withTs));
     }
 
     deletePatient(id: string): void {
@@ -700,18 +866,37 @@ class DatabaseService {
             this.saveSyncMeta();
         }
         this._patientsCache = this._patientsCache.filter(p => p.id !== id);
-        this.dexieDb.patients.delete(id);
-        this.touchSyncMeta();
-        this.syncDeletePatient(id).then(ok => {
-            if (!ok) {
-                console.warn('[DB] Delete API failed — will retry via emitUpdate');
-            }
-            this.emitUpdate();
+        this.afterLocalMutation([{ scope: 'patient', id }]);
+        void this.dexieDb.patients.delete(id).then(() => {
+            this.touchSyncMeta();
+            this.syncDeletePatient(id).then(ok => {
+                if (!ok) {
+                    console.warn('[DB] Delete API failed — will retry via emitUpdate');
+                }
+                this.emitUpdate();
+            });
         });
-        this.notifyUpdate();
     }
 
-    getNextTicketNumber(): number {
+    /**
+     * Cấp số thứ tự (STT) trong ngày. Ưu tiên server để tránh trùng số giữa
+     * nhiều máy cùng đăng ký. Khi mất kết nối server thì fallback đếm cục bộ.
+     */
+    async getNextTicketNumber(): Promise<number> {
+        try {
+            const res = await fetch('/api/ticket/next', { method: 'POST' });
+            if (res.ok) {
+                const result = await res.json();
+                if (typeof result.number === 'number' && result.number > 0) {
+                    return result.number;
+                }
+            }
+        } catch { /* offline → fallback cục bộ */ }
+        return this.getNextTicketNumberLocal();
+    }
+
+    /** Fallback chỉ dùng khi mất kết nối server. */
+    private getNextTicketNumberLocal(): number {
         const today = new Date().toDateString();
         const ticketKey = 'clinic_daily_ticket';
         const stored = localStorage.getItem(ticketKey);
@@ -739,9 +924,7 @@ class DatabaseService {
 
     addInventoryItem(item: InventoryItem): void {
         this._inventoryCache.push(item);
-        this.dexieDb.inventory.add(item);
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'inventory', id: item.id }], this.dexieDb.inventory.put(item));
     }
 
     updateInventory(id: string, updates: Partial<InventoryItem>): void {
@@ -749,29 +932,34 @@ class DatabaseService {
         if (index !== -1) {
             this._inventoryCache[index] = { ...this._inventoryCache[index], ...updates };
         }
-        this.dexieDb.inventory.update(id, updates);
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'inventory', id }], this.dexieDb.inventory.update(id, updates));
     }
 
     deleteInventoryItem(id: string): void {
         this._inventoryCache = this._inventoryCache.filter(i => i.id !== id);
-        this.dexieDb.inventory.delete(id);
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'inventory', id }], this.dexieDb.inventory.delete(id));
     }
 
-    deductStock(items: { itemId: string, quantity: number }[]): void {
+    private applyStockDeduction(items: { itemId: string, quantity: number }[]): string[] {
+        const touched: string[] = [];
         items.forEach(orderItem => {
             const index = this._inventoryCache.findIndex(i => i.id === orderItem.itemId);
             if (index !== -1) {
                 const newQty = Math.max(0, this._inventoryCache[index].quantity - orderItem.quantity);
                 this._inventoryCache[index].quantity = newQty;
-                this.dexieDb.inventory.update(orderItem.itemId, { quantity: newQty });
+                touched.push(orderItem.itemId);
+                void this.dexieDb.inventory.update(orderItem.itemId, { quantity: newQty });
             }
         });
-        this.emitUpdate();
-        this.notifyUpdate();
+        return touched;
+    }
+
+    deductStock(items: { itemId: string, quantity: number }[]): void {
+        const touched = this.applyStockDeduction(items);
+        this.afterLocalMutation(
+            touched.map(id => ({ scope: 'inventory' as const, id })),
+            Promise.resolve()
+        );
     }
 
     // ============ INVOICES ============
@@ -786,8 +974,14 @@ class DatabaseService {
 
     createInvoice(invoice: Invoice): void {
         this._invoicesCache.push(invoice);
-        this.dexieDb.invoices.add(invoice);
-        this.deductStock(invoice.items);
+        const stockTouched = this.applyStockDeduction(invoice.items);
+        this.afterLocalMutation(
+            [
+                { scope: 'invoice', id: invoice.id },
+                ...stockTouched.map(id => ({ scope: 'inventory' as const, id }))
+            ],
+            this.dexieDb.invoices.put(invoice)
+        );
     }
 
     updateInvoice(id: string, updates: Partial<Invoice>): void {
@@ -795,16 +989,12 @@ class DatabaseService {
         if (index !== -1) {
             this._invoicesCache[index] = { ...this._invoicesCache[index], ...updates };
         }
-        this.dexieDb.invoices.update(id, updates);
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'invoice', id }], this.dexieDb.invoices.update(id, updates));
     }
 
     deleteInvoice(id: string): void {
         this._invoicesCache = this._invoicesCache.filter(i => i.id !== id);
-        this.dexieDb.invoices.delete(id);
-        this.emitUpdate();
-        this.notifyUpdate();
+        this.afterLocalMutation([{ scope: 'invoice', id }], this.dexieDb.invoices.delete(id));
     }
 }
 

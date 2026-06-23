@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
+import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 import { getLocalDateString } from '../services/utils';
 import { Patient } from '../types';
 import { Printer, RefreshCw, Plus, Edit2, Trash2, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
@@ -47,19 +48,12 @@ export const Reception: React.FC = () => {
 
   const [lastPrintedTicket, setLastPrintedTicket] = useState<{ number: number, name: string } | null>(null);
 
+  useClinicDbUpdated(() => loadPatients());
+
   useEffect(() => {
     db.runEndOfDayCleanup();
-    loadPatients();
-
-    const handleDbUpdate = () => loadPatients();
-    window.addEventListener('clinic-db-updated', handleDbUpdate);
-
     const eodInterval = setInterval(() => db.runEndOfDayCleanup(), 60 * 60 * 1000);
-
-    return () => {
-      window.removeEventListener('clinic-db-updated', handleDbUpdate);
-      clearInterval(eodInterval);
-    };
+    return () => clearInterval(eodInterval);
   }, []);
 
   const loadPatients = () => {
@@ -67,26 +61,26 @@ export const Reception: React.FC = () => {
   };
 
   const handleDeletePatient = (patient: Patient) => {
-    if (!confirm(`Ban co chac muon xoa benh nhan "${patient.fullName}"?`)) return;
+    if (!confirm(`Bạn có chắc muốn xóa bệnh nhân "${patient.fullName}"?`)) return;
+    setPatients(prev => prev.filter(p => p.id !== patient.id));
     db.deletePatient(patient.id);
-    loadPatients();
-    alert('Da xoa benh nhan!');
+    alert('Đã xóa bệnh nhân!');
   };
 
   const handleUpdatePatient = () => {
     if (!editingPatient) return;
+    setPatients(prev => prev.map(p => p.id === editingPatient.id ? editingPatient : p));
     db.updatePatient(editingPatient);
     setEditingPatient(null);
-    loadPatients();
-    alert('Da cap nhat thong tin!');
+    alert('Đã cập nhật thông tin!');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.fullName) return;
 
-    const ticketNumber = db.getNextTicketNumber();
+    const ticketNumber = await db.getNextTicketNumber();
     const initialStatus = serviceType === 'doctor' ? 'waiting_doctor' : 'waiting_refraction';
-    const reasonText = serviceType === 'doctor' ? 'Kham mat' : 'Cat kinh';
+    const reasonText = serviceType === 'doctor' ? 'Khám mắt' : 'Cắt kính';
 
     const newPatient: Patient = {
       id: generateId(),
@@ -105,6 +99,7 @@ export const Reception: React.FC = () => {
     };
 
     db.addPatient(newPatient);
+    setPatients(prev => [newPatient, ...prev].sort((a, b) => b.timestamp - a.timestamp));
     setLastPrintedTicket({ number: ticketNumber, name: newPatient.fullName });
 
     setTimeout(() => {
@@ -117,7 +112,6 @@ export const Reception: React.FC = () => {
     });
     setServiceType('refraction');
     setShowForm(false);
-    loadPatients();
   };
 
   const printTicketOnly = (patient: Patient) => {
@@ -166,11 +160,7 @@ export const Reception: React.FC = () => {
   const [settings, setSettings] = useState(db.getSettings());
   const today = new Date();
 
-  useEffect(() => {
-    const refresh = () => setSettings(db.getSettings());
-    window.addEventListener('clinic-db-updated', refresh);
-    return () => window.removeEventListener('clinic-db-updated', refresh);
-  }, []);
+  useClinicDbUpdated(() => setSettings(db.getSettings()), false);
   const formattedDate = `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
   const ticketSettings = settings.ticket;
 
@@ -296,7 +286,7 @@ export const Reception: React.FC = () => {
         {totalPages > 1 && (
           <div className="mt-4 flex items-center justify-between border-t pt-4">
             <div className="text-sm text-gray-500">
-              Trang {currentPage} / {totalPages} ({filteredPatients.length} benh nhan)
+              Trang {currentPage} / {totalPages} ({filteredPatients.length} bệnh nhân)
             </div>
             <div className="flex gap-2">
               <button
@@ -304,7 +294,7 @@ export const Reception: React.FC = () => {
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 border rounded-lg flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
               >
-                <ChevronLeft size={16} /> Truoc
+                <ChevronLeft size={16} /> Trước
               </button>
 
               {/* Page numbers */}
@@ -365,11 +355,11 @@ export const Reception: React.FC = () => {
                   value={formData.fullName}
                   onChange={e => setFormData({ ...formData, fullName: e.target.value })}
                   className="clinic-input"
-                  placeholder="Nhap ho va ten"
+                  placeholder="Nhập họ và tên"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Nam sinh</label>
+                <label className="block text-sm font-medium mb-1">Năm sinh</label>
                 <input
                   type="number"
                   value={formData.dob}
@@ -378,18 +368,18 @@ export const Reception: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Gioi tinh</label>
+                <label className="block text-sm font-medium mb-1">Giới tính</label>
                 <select
                   value={formData.gender}
                   onChange={e => setFormData({ ...formData, gender: e.target.value as any })}
                   className="w-full border rounded p-2"
                 >
                   <option value="Nam">Nam</option>
-                  <option value="Nu">Nu</option>
+                  <option value="Nữ">Nữ</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">So dien thoai</label>
+                <label className="block text-sm font-medium mb-1">Số điện thoại</label>
                 <input
                   value={formData.phone}
                   onChange={e => setFormData({ ...formData, phone: e.target.value })}
@@ -397,7 +387,7 @@ export const Reception: React.FC = () => {
                 />
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium mb-1">Dia chi</label>
+                <label className="block text-sm font-medium mb-1">Địa chỉ</label>
                 <input
                   value={formData.address}
                   onChange={e => setFormData({ ...formData, address: e.target.value })}
@@ -406,11 +396,11 @@ export const Reception: React.FC = () => {
               </div>
 
               <div className="col-span-2 border-t pt-4 mt-2">
-                <h4 className="font-bold text-gray-700 mb-2">Thong tin ban dau</h4>
+                <h4 className="font-bold text-gray-700 mb-2">Thông tin ban đầu</h4>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Thi luc (MP - OD)</label>
+                <label className="block text-sm font-medium mb-1">Thị lực (MP - OD)</label>
                 <input
                   value={formData.initialVA?.od}
                   onChange={e => setFormData({ ...formData, initialVA: { ...formData.initialVA!, od: e.target.value } })}
@@ -418,7 +408,7 @@ export const Reception: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Thi luc (MT - OS)</label>
+                <label className="block text-sm font-medium mb-1">Thị lực (MT - OS)</label>
                 <input
                   value={formData.initialVA?.os}
                   onChange={e => setFormData({ ...formData, initialVA: { ...formData.initialVA!, os: e.target.value } })}
@@ -434,11 +424,11 @@ export const Reception: React.FC = () => {
                   onChange={e => setFormData({ ...formData, hasGlasses: e.target.checked })}
                   className="h-4 w-4"
                 />
-                <label htmlFor="hasGlasses" className="text-sm font-medium">Benh nhan dang deo kinh?</label>
+                <label htmlFor="hasGlasses" className="text-sm font-medium">Bệnh nhân đang đeo kính?</label>
               </div>
 
               <div className="col-span-2">
-                <label className="block text-sm font-medium mb-2">Loai dich vu *</label>
+                <label className="block text-sm font-medium mb-2">Loại dịch vụ *</label>
                 <div className="flex gap-3">
                   <label className={`flex-1 p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${serviceType === 'refraction'
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -452,8 +442,8 @@ export const Reception: React.FC = () => {
                       onChange={() => setServiceType('refraction')}
                       className="hidden"
                     />
-                    <div className="font-bold">Cat kinh</div>
-                    <div className="text-xs text-gray-500">Chuyen den phong Khuc xa</div>
+                    <div className="font-bold">Cắt kính</div>
+                    <div className="text-xs text-gray-500">Chuyển đến phòng Khúc xạ</div>
                   </label>
                   <label className={`flex-1 p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${serviceType === 'doctor'
                     ? 'border-purple-500 bg-purple-50 text-purple-700'
@@ -467,18 +457,18 @@ export const Reception: React.FC = () => {
                       onChange={() => setServiceType('doctor')}
                       className="hidden"
                     />
-                    <div className="font-bold">Kham mat</div>
-                    <div className="text-xs text-gray-500">Chuyen den phong Bac si</div>
+                    <div className="font-bold">Khám mắt</div>
+                    <div className="text-xs text-gray-500">Chuyển đến phòng Bác sĩ</div>
                   </label>
                 </div>
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium mb-1">Ly do chi tiet / Trieu chung</label>
+                <label className="block text-sm font-medium mb-1">Lý do chi tiết / Triệu chứng</label>
                 <input
                   value={formData.reason}
                   onChange={e => setFormData({ ...formData, reason: e.target.value })}
                   className="w-full border rounded p-2"
-                  placeholder="Dau mat, mo, com, thay kinh moi..."
+                  placeholder="Đau mắt, mờ, cộm, thay kính mới..."
                 />
               </div>
               <div className="col-span-2">
@@ -491,12 +481,12 @@ export const Reception: React.FC = () => {
               </div>
             </div>
             <div className="p-4 border-t flex justify-end gap-3 bg-gray-50 flex-shrink-0">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 font-medium">Huy</button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 font-medium">Hủy</button>
               <button
                 onClick={handleSubmit}
                 className="px-6 py-2 bg-brand-600 text-white font-bold rounded shadow hover:bg-brand-700"
               >
-                Them & In Phieu
+                Thêm & In Phiếu
               </button>
             </div>
           </div>
@@ -508,14 +498,14 @@ export const Reception: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
             <div className="p-4 border-b bg-yellow-50 flex justify-between flex-shrink-0">
-              <h3 className="text-xl font-bold text-yellow-800">Sua Thong Tin Benh Nhan</h3>
+              <h3 className="text-xl font-bold text-yellow-800">Sửa thông tin bệnh nhân</h3>
               <button onClick={() => setEditingPatient(null)} className="text-gray-500 hover:text-red-500 text-2xl">
                 <X size={24} />
               </button>
             </div>
             <div className="p-6 space-y-4 overflow-y-auto flex-1">
               <div>
-                <label className="block text-sm font-medium mb-1">Ho va ten *</label>
+                <label className="block text-sm font-medium mb-1">Họ và tên *</label>
                 <input
                   className="w-full border rounded p-2"
                   value={editingPatient.fullName}
@@ -524,7 +514,7 @@ export const Reception: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Nam sinh</label>
+                  <label className="block text-sm font-medium mb-1">Năm sinh</label>
                   <input
                     type="number"
                     className="w-full border rounded p-2"
@@ -533,19 +523,19 @@ export const Reception: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Gioi tinh</label>
+                  <label className="block text-sm font-medium mb-1">Giới tính</label>
                   <select
                     className="w-full border rounded p-2"
                     value={editingPatient.gender}
                     onChange={e => setEditingPatient({ ...editingPatient, gender: e.target.value as any })}
                   >
                     <option value="Nam">Nam</option>
-                    <option value="Nu">Nu</option>
+                    <option value="Nữ">Nữ</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">So dien thoai</label>
+                <label className="block text-sm font-medium mb-1">Số điện thoại</label>
                 <input
                   className="w-full border rounded p-2"
                   value={editingPatient.phone}
@@ -553,7 +543,7 @@ export const Reception: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Dia chi</label>
+                <label className="block text-sm font-medium mb-1">Địa chỉ</label>
                 <input
                   className="w-full border rounded p-2"
                   value={editingPatient.address}
@@ -579,7 +569,7 @@ export const Reception: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Ly do kham</label>
+                <label className="block text-sm font-medium mb-1">Lý do khám</label>
                 <input
                   className="w-full border rounded p-2"
                   value={editingPatient.reason}
@@ -588,12 +578,12 @@ export const Reception: React.FC = () => {
               </div>
             </div>
             <div className="p-4 border-t flex justify-end gap-3 bg-gray-50 flex-shrink-0">
-              <button onClick={() => setEditingPatient(null)} className="px-4 py-2 text-gray-600 font-medium">Huy</button>
+              <button onClick={() => setEditingPatient(null)} className="px-4 py-2 text-gray-600 font-medium">Hủy</button>
               <button
                 onClick={handleUpdatePatient}
                 className="px-6 py-2 bg-yellow-500 text-white font-bold rounded shadow hover:bg-yellow-600"
               >
-                Luu Thay Doi
+                Lưu thay đổi
               </button>
             </div>
           </div>
@@ -607,12 +597,16 @@ export const Reception: React.FC = () => {
             {settings.logoUrl && settings.invoice?.showLogo !== false && (
               <img src={settings.logoUrl} alt="Logo" style={{ maxHeight: '12mm', margin: '0 auto 2mm', display: 'block' }} />
             )}
-            <div className="clinic-name">{ticketSettings?.header || settings.name || 'PHONG KHAM MAT NGOAI GIO'}</div>
+            <div className="clinic-name">{ticketSettings?.header || settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</div>
             <div className="doctor-name">{ticketSettings?.subHeader || settings.doctorName || ''}</div>
             <div className="ticket-number">{String(lastPrintedTicket.number).padStart(3, '0')}</div>
             <div className="patient-name">{lastPrintedTicket.name}</div>
-            <div className="ticket-note">{ticketSettings?.note || 'Khach hang vui long cho den STT'}</div>
-            <div className="ticket-date">{ticketSettings?.footer || `Phieu co hieu luc trong ngay ${formattedDate}`}</div>
+            <div className="ticket-note">{ticketSettings?.note || 'Khách hàng vui lòng chờ đến STT'}</div>
+            <div className="ticket-date">
+              {ticketSettings?.footer
+                ? `${ticketSettings.footer} ${formattedDate}`
+                : `Phiếu có hiệu lực trong ngày ${formattedDate}`}
+            </div>
           </div>
         )}
       </div>

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
+import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 import { Patient, RefractionData } from '../types';
 import { Mic, Save, Printer, Search, UserCheck, Clock, CheckCircle, Trash2 } from 'lucide-react';
-import { getLocalDateString, isSameLocalDay } from '../services/utils';
+import { getLocalDateString, isSameLocalDay, speak } from '../services/utils';
+import { RefractionPrintSheet } from './RefractionPrintSheet';
 
 const EMPTY_METRIC = { sph: '', cyl: '', axis: '', va: '', add: '' };
 
@@ -89,16 +91,7 @@ export const Refraction: React.FC = () => {
     localStorage.setItem('refraction_active_tab', activeTab);
   }, [activeTab]);
 
-  useEffect(() => {
-    loadPatients();
-    const handleDbUpdate = () => loadPatients();
-    window.addEventListener('clinic-db-updated', handleDbUpdate);
-    const interval = setInterval(loadPatients, 5000);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('clinic-db-updated', handleDbUpdate);
-    };
-  }, []);
+  useClinicDbUpdated(() => loadPatients());
 
   // Update form data when selected patient changes
   useEffect(() => {
@@ -156,17 +149,14 @@ export const Refraction: React.FC = () => {
     : [];
 
   const startRefraction = (p: Patient) => {
-    const text = `Mời bệnh nhân số ${p.ticketNumber} vào phòng khúc xạ`;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'vi-VN';
-    window.speechSynthesis.speak(utterance);
-
-    // Update status to processing
-    const updated = { ...p, status: 'processing_refraction' as const };
+    // 1) Cập nhật trạng thái + UI TRƯỚC — đảm bảo luôn chuyển sang "Đang đo"
+    const updated = { ...p, status: 'processing_refraction' as const, updatedAt: Date.now() };
     db.updatePatient(updated);
-    loadPatients();
+    setPatients(prev => prev.map(x => x.id === p.id ? updated : x));
     setSelectedPatient(updated);
     setActiveTab('processing');
+    // 2) Đọc loa SAU — lỗi giọng nói (iOS...) không làm hỏng việc chuyển phòng
+    speak(`Mời bệnh nhân số ${p.ticketNumber} vào phòng khúc xạ`);
   };
 
   const handleSelectPatient = (p: Patient) => {
@@ -187,13 +177,14 @@ export const Refraction: React.FC = () => {
     const updated = {
       ...selectedPatient,
       refraction: { ...data, finalRx: finalRxWithPd },
-      status: 'waiting_billing' as const // Chuyển thẳng sang billing để tạo hóa đơn
+      status: 'waiting_billing' as const,
+      updatedAt: Date.now()
     };
+    setPatients(prev => prev.map(x => x.id === selectedPatient.id ? updated : x));
+    setSelectedPatient(null);
+    setActiveTab('waiting');
     db.updatePatient(updated);
     alert('Đã lưu kết quả khúc xạ! Chuyển sang phần hóa đơn.');
-    setSelectedPatient(null);
-    loadPatients();
-    setActiveTab('waiting'); // Return to waiting list
   };
 
   const handleTransferToDoctor = () => {
@@ -209,13 +200,32 @@ export const Refraction: React.FC = () => {
     const updated = {
       ...selectedPatient,
       refraction: { ...data, finalRx: finalRxWithPd },
-      status: 'waiting_doctor' as const // Chuyển sang phòng khám
+      status: 'waiting_doctor' as const,
+      updatedAt: Date.now()
     };
+    setPatients(prev => prev.map(x => x.id === selectedPatient.id ? updated : x));
+    setSelectedPatient(null);
+    setActiveTab('waiting');
     db.updatePatient(updated);
     alert('Đã lưu kết quả khúc xạ! Chuyển sang phòng khám mắt.');
-    setSelectedPatient(null);
-    loadPatients();
-    setActiveTab('waiting'); // Return to waiting list
+  };
+
+  // Nhập khúc xạ chủ quan -> tự đổ sang kính điều chỉnh (vẫn cho sửa tay sau đó)
+  const handleSubjectiveChange = (eye: 'od' | 'os', v: any) => {
+    setData(prev => ({
+      ...prev,
+      subjective: { ...prev.subjective, [eye]: v },
+      finalRx: {
+        ...prev.finalRx,
+        [eye]: {
+          ...prev.finalRx[eye],
+          sph: v.sph || '',
+          cyl: v.cyl || '',
+          axis: v.axis || '',
+          va: v.va || ''
+        }
+      }
+    }));
   };
 
   const handlePrint = () => {
@@ -223,13 +233,8 @@ export const Refraction: React.FC = () => {
   };
 
   const [settings, setSettings] = useState(db.getSettings());
-  const refractionPrint = settings.refraction;
 
-  useEffect(() => {
-    const refresh = () => setSettings(db.getSettings());
-    window.addEventListener('clinic-db-updated', refresh);
-    return () => window.removeEventListener('clinic-db-updated', refresh);
-  }, []);
+  useClinicDbUpdated(() => setSettings(db.getSettings()), false);
   const today = new Date();
 
   return (
@@ -413,8 +418,8 @@ export const Refraction: React.FC = () => {
                   <div>Trục (AXIS)</div>
                   <div>Thị lực (BCVA)</div>
                 </div>
-                <SubjectiveInput label="Mắt phải (OD)" value={data.subjective.od} onChange={v => setData({ ...data, subjective: { ...data.subjective, od: v } })} />
-                <SubjectiveInput label="Mắt trái (OS)" value={data.subjective.os} onChange={v => setData({ ...data, subjective: { ...data.subjective, os: v } })} />
+                <SubjectiveInput label="Mắt phải (OD)" value={data.subjective.od} onChange={v => handleSubjectiveChange('od', v)} />
+                <SubjectiveInput label="Mắt trái (OS)" value={data.subjective.os} onChange={v => handleSubjectiveChange('os', v)} />
               </div>
 
               {/* 3. Kính điều chỉnh (Prescription) */}
@@ -482,203 +487,18 @@ export const Refraction: React.FC = () => {
               </div>
             </div>
 
-            {/* Print View A5 - Phiếu Khúc Xạ theo ĐÚNG mẫu */}
-            <div className="print-area" style={{ background: 'white' }}>
-              <div style={{
-                fontFamily: 'Times New Roman, serif',
-                fontSize: '12px',
-                lineHeight: 1.5,
-                color: 'black',
-                background: 'white',
-                width: '148mm',
-                padding: '5mm',
-                boxSizing: 'border-box'
-              }}>
-                {/* Header - NO BORDER */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3mm' }}>
-                  <div>
-                    {settings.logoUrl && settings.invoice?.showLogo !== false && (
-                      <img src={settings.logoUrl} alt="Logo" style={{ maxHeight: '15mm', marginBottom: '2mm' }} />
-                    )}
-                    <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</div>
-                    <div style={{ fontWeight: 'bold' }}>{settings.doctorName || ''}</div>
-                    <div style={{ fontStyle: 'italic', fontSize: '11px' }}>SĐT: {settings.phone || ''}{settings.email ? ` – ${settings.email}` : ''}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 'bold', textDecoration: 'underline' }}>{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</div>
-                    <div style={{ fontWeight: 'bold' }}>{refractionPrint?.header || 'KHÁM KHÚC XẠ'}</div>
-                    <div style={{ fontStyle: 'italic', fontSize: '11px' }}>{refractionPrint?.rightHeader || settings.workingHours || 'Từ 8h đến 19h, Thứ hai đến Chủ nhật'}</div>
-                  </div>
-                </div>
-
-                {/* Title */}
-                <div style={{ textAlign: 'center', margin: '5mm 0 2mm 0' }}>
-                  <div style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline' }}>PHIẾU KHÚC XẠ</div>
-                  <div style={{ fontSize: '11px', fontStyle: 'italic' }}>Ngày thực hiện: {today.getDate()}/{today.getMonth() + 1}/{today.getFullYear()}</div>
-                </div>
-
-                {/* Patient Info - Simple lines, no table */}
-                <div style={{ marginBottom: '3mm', fontSize: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span><b>Họ và tên:</b> {selectedPatient.fullName}</span>
-                    <span><b>Giới tính:</b> {selectedPatient.gender}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span><b>Ngày sinh:</b> {selectedPatient.dob}</span>
-                    <span><b>SĐT:</b> {selectedPatient.phone}</span>
-                  </div>
-                  <div style={{ textAlign: 'left' }}><b>Địa chỉ:</b> {selectedPatient.address}</div>
-                </div>
-
-                {/* Table 1: UCVA - Thị lực không kính */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '3mm', fontSize: '11px' }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ border: '1px solid black', padding: '2px 4px', width: '35%' }}>
-                        <b>Thị lực không kính/kính cũ</b> (Nếu có)<br />
-                        <i style={{ fontSize: '10px' }}>(UCVA/ with old glasses)</i>
-                      </td>
-                      <td style={{ border: '1px solid black', padding: '4px', textAlign: 'center', width: '22%' }}>
-                        <b>Mắt phải</b> <i>(OD)</i><br />
-                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{selectedPatient.initialVA?.od || ''}</span>
-                      </td>
-                      <td style={{ border: '1px solid black', padding: '4px', textAlign: 'center', width: '22%' }}>
-                        <b>Mắt trái</b> <i>(OS)</i><br />
-                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{selectedPatient.initialVA?.os || ''}</span>
-                      </td>
-                      <td style={{ border: '1px solid black', padding: '4px', textAlign: 'center', width: '21%' }}>
-                        <b>KCĐT</b> <i>(PD)</i><br />
-                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{pd}</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                {/* Table 2: Khúc xạ khách quan + chủ quan */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '3mm', fontSize: '11px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Cận/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(AXIS)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Thị lực</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(BCVA)</i></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px', whiteSpace: 'nowrap' }}>
-                        <b>Khúc xạ khách quan</b><br /><i style={{ fontSize: '10px' }}>(Skiascopy)</i>
-                        {data.skiascopy.cycloplegia && <><br /><span style={{ color: 'red', fontSize: '9px' }}>- Có liệt điều tiết -</span></>}
-                      </td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt phải <i>(OD)</i></td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.od.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', position: 'relative', background: 'linear-gradient(to top right, transparent calc(50% - 1px), #999 calc(50% - 1px), #999 calc(50% + 1px), transparent calc(50% + 1px))' }}></td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt trái <i>(OS)</i></td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.skiascopy.os.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', position: 'relative', background: 'linear-gradient(to top right, transparent calc(50% - 1px), #999 calc(50% - 1px), #999 calc(50% + 1px), transparent calc(50% + 1px))' }}></td>
-                    </tr>
-                    <tr>
-                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px', whiteSpace: 'nowrap' }}>
-                        <b>Khúc xạ chủ quan</b><br /><i style={{ fontSize: '10px' }}>(Subj. refraction)</i>
-                      </td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt phải <i>(OD)</i></td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.od.va}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt trái <i>(OS)</i></td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.subjective.os.va}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                {/* Table 3: Kính điều chỉnh (Prescription) */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '3mm', fontSize: '11px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '20%' }}></th>
-                      <th style={{ border: '1px solid black', padding: '2px', width: '16%', whiteSpace: 'nowrap' }}><b>Mắt</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(Eye)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Cận/viễn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(SPH)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Độ loạn</b><br /><i style={{ fontWeight: 'normal', fontSize: '9px' }}>(CYL)</i></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Trục loạn</b></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>Thị lực</b></th>
-                      <th style={{ border: '1px solid black', padding: '2px' }}><b>ADD</b></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td rowSpan={2} style={{ border: '1px solid black', padding: '2px 4px' }}>
-                        <b>Kính điều chỉnh</b><br /><i style={{ fontSize: '10px' }}>(Prescription)</i>
-                      </td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt phải <i>(OD)</i></td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.va}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.od.add}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mắt trái <i>(OS)</i></td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.sph}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.cyl}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.axis}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.va}</td>
-                      <td style={{ border: '1px solid black', padding: '3px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>{data.finalRx.os.add}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                {/* Loại kính */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '4mm', fontSize: '11px' }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ border: '1px solid black', padding: '2px 4px', width: '22%' }}>
-                        <b>Loại kính</b><br /><i style={{ fontSize: '10px' }}>(Type)</i>
-                      </td>
-                      <td style={{ border: '1px solid black', padding: '2px 4px' }}>{data.finalRx.lensType}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                {/* Ghi chú */}
-                <div style={{ marginBottom: '3mm', textAlign: 'left' }}>
-                  <b>Ghi chú:</b>
-                  <div style={{ minHeight: '12mm', borderBottom: '1px solid black', paddingTop: '2mm', textAlign: 'left' }}>{data.note}</div>
-                </div>
-
-                {/* Lưu ý */}
-                <div style={{ border: '1px solid black', padding: '3mm', marginBottom: '4mm', fontSize: '10px', textAlign: 'justify' }}>
-                  <b>Lưu ý:</b><br />
-                  {refractionPrint?.disclaimer1 || '1. Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghỉ của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.'}<br />
-                  {refractionPrint?.disclaimer2 || '2. Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng.'}
-                </div>
-
-                {/* Chữ ký */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5mm' }}>
-                  <div style={{ textAlign: 'center', width: '45%' }}>
-                    <b>Xác nhận của khách hàng</b>
-                    <div style={{ height: '20mm' }}></div>
-                  </div>
-                  <div style={{ textAlign: 'center', width: '45%' }}>
-                    <b>Người thực hiện</b>
-                    <div style={{ height: '20mm' }}></div>
-                  </div>
-                </div>
+            {/* Print View A5 - mẫu chuẩn print-a5 */}
+            {selectedPatient && (
+              <div className="print-area">
+                <RefractionPrintSheet
+                  settings={settings}
+                  patient={selectedPatient}
+                  refraction={data}
+                  pd={pd}
+                  performedDate={today}
+                />
               </div>
-            </div>
+            )}
           </>
         ) : (
           <div className="h-full flex items-center justify-center text-gray-400">

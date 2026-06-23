@@ -146,6 +146,10 @@ export interface ClinicSettings {
     rightHeader: string;
     disclaimer1: string;
     disclaimer2: string;
+    title?: string;
+    sigLabel1?: string;
+    sigLabel2?: string;
+    sigSubText?: string;
   };
   backup?: {
     path: string;

@@ -338,6 +338,11 @@
         font-size: 9px;
       }
 
+      .invoice-print .clinic-address {
+        font-size: 9px;
+        text-align: left;
+      }
+
       .invoice-print .invoice-title {
         text-align: center;
         font-weight: bold;
@@ -451,13 +456,154 @@
       .print-a5 {
         width: 148mm;
         min-height: 200mm;
-        padding: 8mm;
-        font-size: 11px;
-        line-height: 1.4;
+        padding: 5mm 8mm;
+        font-family: 'Times New Roman', Times, serif;
+        font-size: 12px;
+        line-height: 1.45;
         background: white !important;
         color: black !important;
         box-sizing: border-box;
         margin: 0 auto;
+      }
+
+      .print-a5 .rx-header {
+        margin-bottom: 3mm;
+      }
+
+      .print-a5 .header-left {
+        float: left;
+        text-align: left;
+        width: 55%;
+      }
+
+      .print-a5 .header-right {
+        float: right;
+        text-align: right;
+        width: 42%;
+      }
+
+      .print-a5 .rx-bold { font-weight: bold; margin: 0 0 1mm 0; }
+      .print-a5 .rx-underline { text-decoration: underline; }
+      .print-a5 .rx-meta { font-size: 11px; margin: 0; }
+      .print-a5 .rx-italic { font-style: italic; }
+      .print-a5 .rx-en { font-size: 10px; font-weight: normal; font-style: italic; }
+      .print-a5 .rx-logo { max-height: 12mm; margin-bottom: 2mm; display: block; }
+
+      .print-a5 .rx-title-block {
+        text-align: center;
+        margin: 4mm 0 3mm 0;
+        clear: both;
+      }
+
+      .print-a5 .rx-title {
+        font-size: 16px;
+        font-weight: bold;
+        text-decoration: underline;
+        text-transform: uppercase;
+        margin: 0;
+      }
+
+      .print-a5 .rx-date {
+        font-size: 11px;
+        font-style: italic;
+        margin: 2mm 0 0 0;
+      }
+
+      .print-a5 .rx-patient {
+        font-size: 12px;
+        margin-bottom: 3mm;
+        text-align: left;
+      }
+
+      .print-a5 .rx-patient-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 1mm;
+      }
+
+      .print-a5 .rx-address { margin: 1mm 0 0 0; text-align: left; }
+
+      .print-a5 .rx-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 3mm;
+      }
+
+      .print-a5 .rx-table th,
+      .print-a5 .rx-table td {
+        border: 1px solid black !important;
+        padding: 2px 4px;
+        text-align: center;
+        font-size: 11px;
+        vertical-align: middle;
+      }
+
+      .print-a5 .rx-table th {
+        background: white !important;
+        font-weight: bold;
+      }
+
+      .print-a5 .rx-label-cell,
+      .print-a5 .rx-group-cell {
+        text-align: left !important;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      .print-a5 .rx-value {
+        font-size: 13px;
+        font-weight: bold;
+      }
+
+      .print-a5 .rx-lens-type {
+        text-align: left !important;
+        font-weight: bold;
+      }
+
+      .print-a5 .rx-cyclo {
+        color: red;
+        font-size: 9px;
+      }
+
+      .print-a5 .rx-corner {
+        width: 18%;
+      }
+
+      .print-a5 .rx-notes {
+        margin-bottom: 3mm;
+        text-align: left;
+      }
+
+      .print-a5 .rx-notes-line {
+        min-height: 10mm;
+        border-bottom: 1px solid black;
+        margin-top: 2mm;
+        text-align: center;
+        padding-bottom: 2mm;
+      }
+
+      .print-a5 .rx-disclaimer {
+        border: 1px solid black;
+        padding: 3mm;
+        margin-bottom: 4mm;
+        font-size: 10px;
+        text-align: justify;
+        line-height: 1.5;
+      }
+
+      .print-a5 .rx-signatures {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5mm;
+      }
+
+      .print-a5 .rx-sign-box {
+        text-align: center;
+        width: 45%;
+      }
+
+      .print-a5 .rx-sign-space {
+        height: 20mm;
       }
 
       .print-a5 table {
@@ -484,18 +630,6 @@
       .print-a5 .header-section {
         margin-bottom: 4mm;
         overflow: hidden;
-      }
-
-      .print-a5 .header-left {
-        float: left;
-        text-align: left;
-        width: 50%;
-      }
-
-      .print-a5 .header-right {
-        float: right;
-        text-align: right;
-        width: 50%;
       }
 
       .print-a5 .title {

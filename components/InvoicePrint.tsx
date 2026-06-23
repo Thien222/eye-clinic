@@ -31,12 +31,13 @@ export const InvoicePrint: React.FC<InvoicePrintProps> = ({
                 )}
                 <div className="clinic-name">{settings.name || "PHÒNG KHÁM MẮT NGOÀI GIỜ"}</div>
                 <div className="doctor-name">{settings.doctorName || ""}</div>
-                <div className="clinic-phone">DT: {settings.phone || ""}{settings.address ? ` | ${settings.address}` : ""}</div>
+                <div className="clinic-phone">DT: {settings.phone || ""}</div>
+                {settings.address && <div className="clinic-address">DC: {settings.address}</div>}
             </div>
 
-            <div className="invoice-title">{settings.invoice?.header || settings.printTemplates?.receiptHeader || "HOA DON BAN LE"}</div>
+            <div className="invoice-title">{settings.invoice?.header || settings.printTemplates?.receiptHeader || "HÓA ĐƠN BÁN LẺ"}</div>
 
-            {/* Thong tin khach hang */}
+            {/* Thông tin khách hàng */}
             <div className="invoice-info">
                 <div className="invoice-datetime">
                     <span>{timeStr}</span>
@@ -71,33 +72,33 @@ export const InvoicePrint: React.FC<InvoicePrintProps> = ({
             {/* Phan tinh tien */}
             <div className="invoice-summary">
                 <div className="summary-row">
-                    <span>Tam tinh:</span>
+                    <span>Tạm tính:</span>
                     <span>{subtotal.toLocaleString()}</span>
                 </div>
 
                 {extraCharges.surcharge > 0 && (
                     <div className="summary-row">
-                        <span>Phu thu:</span>
+                        <span>Phụ thu:</span>
                         <span>+{extraCharges.surcharge.toLocaleString()}</span>
                     </div>
                 )}
 
                 {extraCharges.discount > 0 && (
                     <div className="summary-row">
-                        <span>Giam gia:</span>
+                        <span>Giảm giá:</span>
                         <span>-{extraCharges.discount.toLocaleString()}</span>
                     </div>
                 )}
 
                 <div className="summary-total">
-                    <span>TONG CONG:</span>
+                    <span>TỔNG CỘNG:</span>
                     <span>{finalTotal.toLocaleString()}</span>
                 </div>
             </div>
 
             {/* Footer */}
             <div className="invoice-footer">
-                <div>{settings.invoice?.footer || settings.printTemplates?.receiptFooter || "Cam on quy khach!"}</div>
+                <div>{settings.invoice?.footer || settings.printTemplates?.receiptFooter || "Cảm ơn quý khách!"}</div>
             </div>
         </div>
     );

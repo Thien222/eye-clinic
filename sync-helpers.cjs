@@ -31,7 +31,7 @@ function mergePatients(local, remote, deletedIds) {
         const existing = map.get(p.id);
         const pUpdated = p.updatedAt || p.timestamp || 0;
         const eUpdated = existing ? (existing.updatedAt || existing.timestamp || 0) : 0;
-        if (!existing || pUpdated >= eUpdated) map.set(p.id, p);
+        if (!existing || pUpdated > eUpdated) map.set(p.id, p);
     }
     return Array.from(map.values());
 }
@@ -64,28 +64,11 @@ function sanitizeData(data) {
     return copy;
 }
 
-function finalizeClinicData(data) {
-    const syncMeta = {
-        ...data.syncMeta,
-        version: (data.syncMeta.version || 0) + 1,
-        lastUpdated: Date.now()
-    };
-    const merged = {
-        ...data,
-        syncMeta,
-        patients: mergePatients([], data.patients, syncMeta.deletedPatientIds),
-        inventory: data.inventory || [],
-        invoices: data.invoices || []
-    };
-    return applyTombstones(merged);
-}
-
 module.exports = {
     mergeSyncMeta,
     applyTombstones,
     mergePatients,
     mergeInventory,
     mergeInvoices,
-    sanitizeData,
-    finalizeClinicData
+    sanitizeData
 };

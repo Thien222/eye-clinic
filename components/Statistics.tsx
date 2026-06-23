@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { db } from '../services/db';
 import { getLocalDateString } from '../services/utils';
 import { Invoice, InventoryItem, Patient } from '../types';
-import { TrendingUp, DollarSign, Package, ShoppingCart, Calendar, ArrowUp, ArrowDown, Printer, FileSpreadsheet } from 'lucide-react';
+import { TrendingUp, DollarSign, Package, ShoppingCart, Calendar, ArrowUp, ArrowDown, Printer, FileSpreadsheet, Glasses } from 'lucide-react';
 import { exportStatisticsExcel } from '../services/excelExport';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
+import { StatCard } from './ui/StatCard';
+import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 
 export const Statistics: React.FC = () => {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -25,12 +27,7 @@ export const Statistics: React.FC = () => {
         setPatients(db.getPatients());
     };
 
-    useEffect(() => {
-        refreshData();
-        const handleDbUpdate = () => refreshData();
-        window.addEventListener('clinic-db-updated', handleDbUpdate);
-        return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
-    }, []);
+    useClinicDbUpdated(refreshData);
 
     const isInPeriod = (timestamp: number) => {
         const d = new Date(timestamp);
@@ -82,7 +79,7 @@ export const Statistics: React.FC = () => {
     const prevRevenue = prevMonthInvoices.reduce((sum, inv) => sum + inv.total, 0);
     const revenueChange = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue * 100) : 0;
 
-    const periodLabel = periodType === 'day' ? 'Hôm nay' : periodType === 'week' ? '7 ngày gần nhất' : `Thang ${selectedMonth}`;
+    const periodLabel = periodType === 'day' ? 'Hôm nay' : periodType === 'week' ? '7 ngày gần nhất' : `Tháng ${selectedMonth}`;
 
     const handlePrint = () => {
         setPrintMode(true);
@@ -90,7 +87,7 @@ export const Statistics: React.FC = () => {
     };
 
     const handleExportExcel = () => {
-        exportStatisticsExcel(periodLabel, refractionPatients, filteredInvoices, inventory);
+        void exportStatisticsExcel(periodLabel, refractionPatients, filteredInvoices, inventory);
     };
 
     // Low stock items
@@ -138,29 +135,25 @@ export const Statistics: React.FC = () => {
             />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                <div className="clinic-card p-5 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-0 shadow-card">
-                    <p className="text-emerald-100 text-sm font-medium">Tổng doanh thu</p>
-                    <p className="text-3xl font-bold mt-1 tabular-nums">{totalRevenue.toLocaleString('vi-VN')} đ</p>
-                    <p className="mt-2 text-sm text-emerald-100 flex items-center gap-1">
-                        {revenueChange >= 0 ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-                        {revenueChange >= 0 ? '+' : ''}{revenueChange.toFixed(1)}% so với kỳ trước
-                    </p>
-                </div>
-                <div className="clinic-card p-5 bg-gradient-to-br from-brand-600 to-brand-700 text-white border-0 shadow-card">
-                    <p className="text-brand-100 text-sm font-medium">Lợi nhuận</p>
-                    <p className="text-3xl font-bold mt-1 tabular-nums">{totalProfit.toLocaleString('vi-VN')} đ</p>
-                    <p className="mt-2 text-sm text-brand-100">Tỷ suất: {totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0}%</p>
-                </div>
-                <div className="clinic-card p-5 bg-gradient-to-br from-sky-500 to-sky-600 text-white border-0 shadow-card">
-                    <p className="text-sky-100 text-sm font-medium">Số hóa đơn</p>
-                    <p className="text-3xl font-bold mt-1 tabular-nums">{filteredInvoices.length}</p>
-                    <p className="mt-2 text-sm text-sky-100">TB: {filteredInvoices.length > 0 ? Math.round(totalRevenue / filteredInvoices.length).toLocaleString('vi-VN') : 0} đ/đơn</p>
-                </div>
-                <div className="clinic-card p-5 bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-card">
-                    <p className="text-amber-100 text-sm font-medium">Sản phẩm bán ra</p>
-                    <p className="text-3xl font-bold mt-1 tabular-nums">{totalItemsSold}</p>
-                    <p className="mt-2 text-sm text-amber-100">Giảm giá: {totalDiscount.toLocaleString('vi-VN')} đ</p>
-                </div>
+                <StatCard label="Tổng doanh thu" value={`${totalRevenue.toLocaleString('vi-VN')} đ`} icon={DollarSign} accent="emerald" />
+                <StatCard label="Lợi nhuận" value={`${totalProfit.toLocaleString('vi-VN')} đ`} icon={TrendingUp} accent="teal" />
+                <StatCard label="Số hóa đơn" value={filteredInvoices.length} icon={ShoppingCart} accent="sky" />
+                <StatCard label="Sản phẩm bán ra" value={totalItemsSold} icon={Package} accent="amber" />
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm text-slate-700 font-medium">
+                <span className="inline-flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-lg">
+                    {revenueChange >= 0 ? <ArrowUp size={14} className="text-emerald-600" /> : <ArrowDown size={14} className="text-red-600" />}
+                    {revenueChange >= 0 ? '+' : ''}{revenueChange.toFixed(1)}% so với kỳ trước
+                </span>
+                <span className="bg-slate-100 px-3 py-1.5 rounded-lg">
+                    TB: {filteredInvoices.length > 0 ? Math.round(totalRevenue / filteredInvoices.length).toLocaleString('vi-VN') : 0} đ/đơn
+                </span>
+                <span className="bg-slate-100 px-3 py-1.5 rounded-lg">
+                    Tỷ suất LN: {totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0}%
+                </span>
+                <span className="bg-slate-100 px-3 py-1.5 rounded-lg">
+                    Giảm giá: {totalDiscount.toLocaleString('vi-VN')} đ
+                </span>
             </div>
 
             {/* Secondary Stats */}
@@ -222,7 +215,7 @@ export const Statistics: React.FC = () => {
 
                 {/* Low Stock Warning */}
                 <div className="clinic-card p-5">
-                    <h3 className="font-bold text-gray-800 mb-4">⚠️ Cảnh Báo Tồn Kho</h3>
+                    <h3 className="font-semibold text-slate-900 mb-4">Cảnh báo tồn kho</h3>
                     {lowStockItems.length === 0 ? (
                         <div className="text-center py-4">
                             <span className="text-green-500 text-4xl">✓</span>
@@ -245,7 +238,9 @@ export const Statistics: React.FC = () => {
 
             {/* Refraction Stats */}
             <div className="clinic-card p-5">
-                <h3 className="font-bold text-gray-800 mb-4">👓 Thống Kê Khúc Xạ ({periodLabel})</h3>
+                <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <Glasses size={18} className="text-brand-600" /> Thống kê khúc xạ ({periodLabel})
+                </h3>
                 <div className="grid grid-cols-3 gap-4 mb-4">
                     <div className="p-4 bg-blue-50 rounded-lg text-center">
                         <div className="text-2xl font-bold text-blue-600">{refractionPatients.length}</div>
@@ -264,8 +259,8 @@ export const Statistics: React.FC = () => {
 
             {/* Daily Revenue Table */}
             <div className="clinic-card p-5">
-                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <Calendar size={18} /> Doanh Thu Theo Ngày
+                <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <Calendar size={18} className="text-brand-600" /> Doanh thu theo ngày
                 </h3>
                 {Object.keys(dailyRevenue).length === 0 ? (
                     <p className="text-gray-400 text-center py-4">Chưa có dữ liệu trong tháng này</p>

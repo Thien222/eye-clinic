@@ -6,6 +6,8 @@ import { Search, Eye, FileText, Calendar, Glasses, Printer, ChevronLeft, Chevron
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
 import { SearchInput } from './ui/SearchInput';
+import { RefractionPrintSheet } from './RefractionPrintSheet';
+import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 
 const ITEMS_PER_PAGE = 25;
 
@@ -19,12 +21,7 @@ export const History: React.FC = () => {
   const [printList, setPrintList] = useState(false);
   const settings = db.getSettings();
 
-  useEffect(() => {
-    loadPatients();
-    const handleDbUpdate = () => loadPatients();
-    window.addEventListener('clinic-db-updated', handleDbUpdate);
-    return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
-  }, []);
+  useClinicDbUpdated(() => loadPatients());
 
   const loadPatients = () => {
     const all = db.getPatients();
@@ -367,189 +364,11 @@ export const History: React.FC = () => {
       {/* Print Area for Refraction Sheet */}
       {selectedPatient?.refraction && (
         <div className="print-area">
-          <div className="print-a5">
-            {/* Header */}
-            <div className="clearfix mb-4">
-              <div className="header-left">
-                <p className="font-bold">{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</p>
-                <p className="font-bold">{settings.doctorName || ''}</p>
-                <p className="text-xs">SĐT: {settings.phone || ''}</p>
-              </div>
-              <div className="header-right">
-                <p className="font-bold">{settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}</p>
-                <p className="font-bold">{settings.refraction?.header || 'KHÁM KHÚC XẠ'}</p>
-                <p className="text-xs">{settings.refraction?.rightHeader || settings.workingHours || ''}</p>
-              </div>
-            </div>
-
-            {/* Title */}
-            <h1 className="text-center text-xl font-bold my-4 uppercase">PHIẾU KHÚC XẠ</h1>
-            <p className="text-center text-sm mb-4">Ngày thực hiện: {new Date(selectedPatient.timestamp).toLocaleDateString('vi-VN')}</p>
-
-            {/* Patient Info */}
-            <div className="mb-4 text-sm">
-              <div className="flex justify-between mb-1">
-                <span><strong>Họ và tên:</strong> {selectedPatient.fullName}</span>
-                <span><strong>Giới tính:</strong> {selectedPatient.gender}</span>
-              </div>
-              <div className="flex justify-between mb-1">
-                <span><strong>Ngày sinh:</strong> {selectedPatient.dob}</span>
-                <span><strong>SĐT:</strong> {selectedPatient.phone}</span>
-              </div>
-              <p><strong>Địa chỉ:</strong> {selectedPatient.address}</p>
-            </div>
-
-            {/* UCVA */}
-            <table className="mb-4">
-              <thead>
-                <tr>
-                  <th colSpan={2}>Thị lực không kính/kính cũ<br /><span className="text-xs font-normal">(UCVA/with old glasses)</span></th>
-                  <th>Mắt phải (OD)</th>
-                  <th>Mắt trái (OS)</th>
-                  <th>KCĐT<br />(PD)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colSpan={2}></td>
-                  <td>{selectedPatient.initialVA?.od || ''}</td>
-                  <td>{selectedPatient.initialVA?.os || ''}</td>
-                  <td>{selectedPatient.refraction.finalRx.od.pd || ''}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Skiascopy */}
-            <table className="mb-2">
-              <thead>
-                <tr>
-                  <th rowSpan={2}>Khúc xạ khách quan<br /><span className="text-xs font-normal">(Skiascopy)</span>{selectedPatient.refraction.skiascopy.cycloplegia && <><br /><span className="text-xs text-red-600">- Có liệt điều tiết -</span></>}</th>
-                  <th>MẮT</th>
-                  <th>Độ cầu (SPH)</th>
-                  <th>Độ loạn (CYL)</th>
-                  <th>Trục (AXIS)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td></td>
-                  <td>OD</td>
-                  <td>{selectedPatient.refraction.skiascopy.od.sph}</td>
-                  <td>{selectedPatient.refraction.skiascopy.od.cyl}</td>
-                  <td>{selectedPatient.refraction.skiascopy.od.axis}</td>
-                </tr>
-                <tr>
-                  <td></td>
-                  <td>OS</td>
-                  <td>{selectedPatient.refraction.skiascopy.os.sph}</td>
-                  <td>{selectedPatient.refraction.skiascopy.os.cyl}</td>
-                  <td>{selectedPatient.refraction.skiascopy.os.axis}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Subjective */}
-            <table className="mb-4">
-              <thead>
-                <tr>
-                  <th rowSpan={2}>Khúc xạ chủ quan<br /><span className="text-xs font-normal">(Subj. refraction)</span></th>
-                  <th>MẮT</th>
-                  <th>SPH</th>
-                  <th>CYL</th>
-                  <th>AXIS</th>
-                  <th>Thị lực</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td></td>
-                  <td>OD</td>
-                  <td>{selectedPatient.refraction.subjective.od.sph}</td>
-                  <td>{selectedPatient.refraction.subjective.od.cyl}</td>
-                  <td>{selectedPatient.refraction.subjective.od.axis}</td>
-                  <td>{selectedPatient.refraction.subjective.od.va}</td>
-                </tr>
-                <tr>
-                  <td></td>
-                  <td>OS</td>
-                  <td>{selectedPatient.refraction.subjective.os.sph}</td>
-                  <td>{selectedPatient.refraction.subjective.os.cyl}</td>
-                  <td>{selectedPatient.refraction.subjective.os.axis}</td>
-                  <td>{selectedPatient.refraction.subjective.os.va}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Prescription */}
-            <table className="mb-2">
-              <thead>
-                <tr>
-                  <th rowSpan={2}>Kính điều chỉnh<br /><span className="text-xs font-normal">(Prescription)</span></th>
-                  <th>MẮT</th>
-                  <th>SPH</th>
-                  <th>CYL</th>
-                  <th>AXIS</th>
-                  <th>Thị lực</th>
-                  <th>ADD</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td></td>
-                  <td>OD</td>
-                  <td>{selectedPatient.refraction.finalRx.od.sph}</td>
-                  <td>{selectedPatient.refraction.finalRx.od.cyl}</td>
-                  <td>{selectedPatient.refraction.finalRx.od.axis}</td>
-                  <td>{selectedPatient.refraction.finalRx.od.va}</td>
-                  <td>{selectedPatient.refraction.finalRx.od.add}</td>
-                </tr>
-                <tr>
-                  <td></td>
-                  <td>OS</td>
-                  <td>{selectedPatient.refraction.finalRx.os.sph}</td>
-                  <td>{selectedPatient.refraction.finalRx.os.cyl}</td>
-                  <td>{selectedPatient.refraction.finalRx.os.axis}</td>
-                  <td>{selectedPatient.refraction.finalRx.os.va}</td>
-                  <td>{selectedPatient.refraction.finalRx.os.add}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Lens Type */}
-            <table className="mb-4">
-              <tbody>
-                <tr>
-                  <th>Loại kính<br /><span className="text-xs font-normal">(Type)</span></th>
-                  <td colSpan={6}>{selectedPatient.refraction.finalRx.lensType}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            {/* Notes */}
-            <div className="mb-4">
-              <p><strong>Ghi chú:</strong></p>
-              <p className="min-h-[30px] border-b border-dotted">{selectedPatient.refraction.note}</p>
-            </div>
-
-            {/* Disclaimer */}
-            <div className="text-xs mb-4 p-2 border rounded">
-              <p><strong>Lưu ý:</strong></p>
-              <p>{settings.refraction?.disclaimer1 || '1. Khách hàng đã được đeo thử kính...'}</p>
-              <p>{settings.refraction?.disclaimer2 || '2. Khách hàng đã được tư vấn về độ kính phù hợp...'}</p>
-            </div>
-
-            {/* Signatures */}
-            <div className="flex justify-between mt-8">
-              <div className="text-center">
-                <p className="font-bold">Xác nhận của khách hàng</p>
-                <p className="mt-16">(Ký và ghi rõ họ tên)</p>
-              </div>
-              <div className="text-center">
-                <p className="font-bold">Người thực hiện</p>
-                <p className="mt-16">(Ký và ghi rõ họ tên)</p>
-              </div>
-            </div>
-          </div>
+          <RefractionPrintSheet
+            settings={settings}
+            patient={selectedPatient}
+            refraction={selectedPatient.refraction}
+          />
         </div>
       )}
 

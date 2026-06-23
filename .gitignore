@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Generated / runtime artifacts
+backups/
+data/*.json
+release/dist/
+release/public/
+release/node_modules/
+release/bin/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

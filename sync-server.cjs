@@ -70,7 +70,7 @@ function mergeClinicData(incoming) {
 
     const localSettingsTs = clinicData.settings?.settingsUpdatedAt || 0;
     const remoteSettingsTs = data.settings?.settingsUpdatedAt || 0;
-    const mergedSettings = remoteSettingsTs >= localSettingsTs
+    const mergedSettings = remoteSettingsTs > localSettingsTs
         ? (data.settings || clinicData.settings)
         : (clinicData.settings || data.settings);
 
@@ -83,27 +83,26 @@ function mergeClinicData(incoming) {
         inventory: mergeInventory(clinicData.inventory, data.inventory),
         invoices: mergeInvoices(clinicData.invoices, data.invoices),
         settings: mergedSettings || null,
-        syncMeta
+        syncMeta,
+        // Bộ đếm STT trong ngày do server quản lý — giữ lại khi merge để không bị mất
+        dailyTicket: clinicData.dailyTicket || null
     };
     clinicData = applyTombstones(merged);
     return clinicData;
 }
 
-function persistAndBroadcast(sourceSocket) {
+function persistAndBroadcast(_sourceSocket) {
     clinicData = applyTombstones(clinicData);
     clinicData.syncMeta.version = (clinicData.syncMeta.version || 0) + 1;
     clinicData.syncMeta.lastUpdated = Date.now();
-    saveData(clinicData);
     const payload = applyTombstones(clinicData);
-    if (sourceSocket) {
-        sourceSocket.broadcast.emit('data-updated', payload);
-    } else {
-        io.emit('data-updated', payload);
-    }
+    // Broadcast NGAY — không đợi ghi đĩa (giảm độ trễ đồng bộ)
+    io.emit('data-updated', payload);
+    saveDataAsync(clinicData);
 }
 
-// Save data to file
-function saveData(data) {
+// Save data to file (đồng bộ — dùng khi shutdown)
+function saveDataSync(data) {
     try {
         fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
         return true;
@@ -111,6 +110,24 @@ function saveData(data) {
         console.error('Error saving data:', e);
         return false;
     }
+}
+
+// Ghi đĩa bất đồng bộ + debounce — không chặn broadcast realtime
+let _saveTimer = null;
+function saveDataAsync(data) {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+        _saveTimer = null;
+        saveDataSync(data);
+    }, 50);
+}
+
+function flushSaveSync() {
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+    }
+    saveDataSync(clinicData);
 }
 
 // Get backup directory from settings or use default
@@ -186,7 +203,7 @@ function cleanOldBackups(backupDir, keepCount = 20) {
 const rawLoaded = loadData();
 let clinicData = applyTombstones(sanitizeData(rawLoaded));
 if (clinicData.patients.length !== (rawLoaded.patients || []).length) {
-    saveData(clinicData);
+    saveDataSync(clinicData);
     console.log('[Sync] Đã dọn BN đã xóa khỏi database.json');
 }
 
@@ -221,6 +238,19 @@ app.post('/api/sync/delete-patient/:id', (req, res) => {
     persistAndBroadcast(null);
     console.log(`[Sync] ✓ Deleted patient ${patientId}, tombstones: ${clinicData.syncMeta.deletedPatientIds.length}`);
     res.json({ success: true, syncMeta: clinicData.syncMeta });
+});
+
+// Cấp số thứ tự (STT) trong ngày — server cấp để không trùng số giữa các máy
+app.post('/api/ticket/next', (req, res) => {
+    const todayStr = new Date().toDateString();
+    let dt = clinicData.dailyTicket;
+    if (!dt || dt.date !== todayStr) {
+        dt = { date: todayStr, count: 0 };
+    }
+    dt.count += 1;
+    clinicData.dailyTicket = dt;
+    saveDataAsync(clinicData);
+    res.json({ success: true, number: dt.count, date: todayStr });
 });
 
 // Heartbeat — client gửi định kỳ để đảm bảo server có dữ liệu mới nhất
@@ -420,6 +450,7 @@ createBackup('server_start');
 // Graceful shutdown with backup
 function gracefulShutdown(signal) {
     console.log(`\n[Server] Received ${signal}, shutting down...`);
+    flushSaveSync();
     console.log('[Backup] Creating shutdown backup...');
     createBackup('server_stop');
 
@@ -450,6 +481,25 @@ if (process.platform === 'win32') {
     rl.on('close', () => gracefulShutdown('close'));
 }
 
+// Tự mở trình duyệt tới trang web khi server khởi động.
+// Đặt biến môi trường NO_OPEN=1 để tắt (vd khi chạy nền/headless).
+function openBrowser(url) {
+    if (process.env.NO_OPEN === '1') return;
+    try {
+        const { spawn } = require('child_process');
+        const platform = process.platform;
+        if (platform === 'win32') {
+            spawn('cmd', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+        } else if (platform === 'darwin') {
+            spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
+        } else {
+            spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+        }
+    } catch (e) {
+        console.log('[Server] Không tự mở được trình duyệt:', e.message);
+    }
+}
+
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════════════════╗
@@ -464,4 +514,5 @@ server.listen(PORT, '0.0.0.0', () => {
 ║  ✓ Backup on server start/stop                       ║
 ╚══════════════════════════════════════════════════════╝
     `);
+    openBrowser(`http://localhost:${PORT}`);
 });

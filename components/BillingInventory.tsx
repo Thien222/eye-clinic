@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
+import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 import { parseLensSpecs, rxMatches, isSameLocalDay, groupLensesByPrice, findSamePriceLensPairs } from '../services/utils';
 import { Patient, InventoryItem } from '../types';
 
@@ -41,6 +42,15 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    const [frameSearchCode, setFrameSearchCode] = useState('');
    const [foundFrame, setFoundFrame] = useState<InventoryItem | null>(null);
 
+   // Bán lẻ không qua khám (khách lẻ)
+   const [billingMode, setBillingMode] = useState<'exam' | 'walkin'>('exam');
+   const [walkInName, setWalkInName] = useState('');
+   const [walkInPhone, setWalkInPhone] = useState('');
+   const [walkInRx, setWalkInRx] = useState({
+      od: { sph: '', cyl: '', add: '' },
+      os: { sph: '', cyl: '', add: '' }
+   });
+
    // Lens suggestions
    const [suggestedLensesOD, setSuggestedLensesOD] = useState<InventoryItem[]>([]);
    const [suggestedLensesOS, setSuggestedLensesOS] = useState<InventoryItem[]>([]);
@@ -79,12 +89,12 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    const [showNameSuggestions, setShowNameSuggestions] = useState(false);
    const [settings, setSettings] = useState(db.getSettings());
 
-   // Auto-fill khi nh?p tï¿½n s?n ph?m
+   // Auto-fill khi nhập tên sản phẩm
    const handleNameChange = (name: string) => {
       setNewItem({ ...newItem, name });
 
       if (name.length >= 2) {
-         // T?m s?n ph?m cï¿½ tï¿½n ch?a chu?i nh?p vï¿½o (cï¿½ng category)
+         // Tìm sản phẩm có tên chứa chuỗi nhập vào (cùng category)
          const matches = inventory.filter(item =>
             item.category === newItem.category &&
             item.name.toLowerCase().includes(name.toLowerCase())
@@ -97,7 +107,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       }
    };
 
-   // Ch?n g?i ? ï¿½? auto-fill t?t c? thï¿½ng s?
+   // Chọn gợi ý để auto-fill tất cả thông số
    const selectSuggestion = (item: InventoryItem) => {
       setNewItem({
          ...newItem,
@@ -107,7 +117,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          price: item.price,
          minStock: item.minStock,
          specs: item.specs || { sph: '', cyl: '', add: '', material: '', type: 'single' }
-         // Khï¿½ng set quantity - ï¿½? user nh?p s? lï¿½?ng mu?n thï¿½m
+         // Không set quantity - để user nhập số lượng muốn thêm
       });
       setShowNameSuggestions(false);
    };
@@ -117,15 +127,10 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       localStorage.setItem('billing_active_tab', activeTab);
    }, [activeTab]);
 
-   useEffect(() => {
+   useClinicDbUpdated(() => {
       refreshData();
-      const handleDbUpdate = () => {
-         refreshData();
-         setSettings(db.getSettings());
-      };
-      window.addEventListener('clinic-db-updated', handleDbUpdate);
-      return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
-   }, []);
+      setSettings(db.getSettings());
+   });
 
    const refreshData = () => {
       setWaitingPatients(db.getPatients().filter(p => p.status === 'waiting_billing' && isSameLocalDay(p.timestamp)));
@@ -134,6 +139,38 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    };
 
    // Khi chá»n bá»‡nh nhĂ¢n, tá»± Ä‘á»™ng gá»£i Ă½ trĂ²ng kĂ­nh
+   // Gợi ý tròng kính theo độ — dùng chung cho khách đã khám và khách lẻ
+   const applyLensSuggestions = (
+      odSph: number, odCyl: number, odAdd: number,
+      osSph: number, osCyl: number, osAdd: number
+   ) => {
+      const inv = db.getInventory().filter(i => i.category === 'lens' && i.quantity > 0);
+      const matchForEye = (sph: number, cyl: number, add: number) =>
+         inv.filter(item => {
+            const { itemSph, itemCyl, itemAdd } = parseLensSpecs(item.specs);
+            return rxMatches(itemSph, itemCyl, itemAdd, sph, cyl, add);
+         });
+
+      const matchesOD = matchForEye(odSph, odCyl, odAdd);
+      const matchesOS = matchForEye(osSph, osCyl, osAdd);
+      const paired = matchesOD.filter(odLens =>
+         matchesOS.some(osLens => odLens.code === osLens.code && odLens.price === osLens.price)
+      );
+
+      setSuggestedLensesOD(matchesOD);
+      setSuggestedLensesOS(matchesOS);
+      setSuggestedPairedLenses(paired);
+      setSamePricePairs(findSamePriceLensPairs(matchesOD, matchesOS));
+   };
+
+   const clearLensSuggestions = () => {
+      setSuggestedLensesOD([]);
+      setSuggestedLensesOS([]);
+      setSuggestedPairedLenses([]);
+      setSamePricePairs([]);
+   };
+
+   // Khi chọn bệnh nhân, tự động gợi ý tròng kính
    const handleSelectPatient = (p: Patient) => {
       setSelectedPatient(p);
       setExtraCharges({ discount: 0, surcharge: 0 });
@@ -142,36 +179,46 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       setFrameSearchCode('');
 
       if (p.refraction) {
-         const inv = db.getInventory().filter(i => i.category === 'lens' && i.quantity > 0);
-         const odSph = parseFloat(p.refraction.finalRx.od.sph) || 0;
-         const odCyl = parseFloat(p.refraction.finalRx.od.cyl) || 0;
-         const odAdd = parseFloat(p.refraction.finalRx.od.add || '0') || 0;
-         const osSph = parseFloat(p.refraction.finalRx.os.sph) || 0;
-         const osCyl = parseFloat(p.refraction.finalRx.os.cyl) || 0;
-         const osAdd = parseFloat(p.refraction.finalRx.os.add || '0') || 0;
-
-         const matchForEye = (sph: number, cyl: number, add: number) =>
-            inv.filter(item => {
-               const { itemSph, itemCyl, itemAdd } = parseLensSpecs(item.specs);
-               return rxMatches(itemSph, itemCyl, itemAdd, sph, cyl, add);
-            });
-
-         const matchesOD = matchForEye(odSph, odCyl, odAdd);
-         const matchesOS = matchForEye(osSph, osCyl, osAdd);
-         const paired = matchesOD.filter(odLens =>
-            matchesOS.some(osLens => odLens.code === osLens.code && odLens.price === osLens.price)
+         applyLensSuggestions(
+            parseFloat(p.refraction.finalRx.od.sph) || 0,
+            parseFloat(p.refraction.finalRx.od.cyl) || 0,
+            parseFloat(p.refraction.finalRx.od.add || '0') || 0,
+            parseFloat(p.refraction.finalRx.os.sph) || 0,
+            parseFloat(p.refraction.finalRx.os.cyl) || 0,
+            parseFloat(p.refraction.finalRx.os.add || '0') || 0
          );
-
-         setSuggestedLensesOD(matchesOD);
-         setSuggestedLensesOS(matchesOS);
-         setSuggestedPairedLenses(paired);
-         setSamePricePairs(findSamePriceLensPairs(matchesOD, matchesOS));
       } else {
-         setSuggestedLensesOD([]);
-         setSuggestedLensesOS([]);
-         setSuggestedPairedLenses([]);
-         setSamePricePairs([]);
+         clearLensSuggestions();
       }
+   };
+
+   // Chuyển chế độ tạo hóa đơn (khách đã khám / khách lẻ)
+   const switchBillingMode = (mode: 'exam' | 'walkin') => {
+      if (mode === billingMode) return;
+      setBillingMode(mode);
+      setSelectedPatient(null);
+      setCart([]);
+      setExtraCharges({ discount: 0, surcharge: 0 });
+      setFoundFrame(null);
+      setFrameSearchCode('');
+      clearLensSuggestions();
+      if (mode === 'exam') {
+         setWalkInName('');
+         setWalkInPhone('');
+         setWalkInRx({ od: { sph: '', cyl: '', add: '' }, os: { sph: '', cyl: '', add: '' } });
+      }
+   };
+
+   // Khách lẻ: tìm tròng theo độ nhập tay
+   const searchWalkInLenses = () => {
+      applyLensSuggestions(
+         parseFloat(walkInRx.od.sph) || 0,
+         parseFloat(walkInRx.od.cyl) || 0,
+         parseFloat(walkInRx.od.add) || 0,
+         parseFloat(walkInRx.os.sph) || 0,
+         parseFloat(walkInRx.os.cyl) || 0,
+         parseFloat(walkInRx.os.add) || 0
+      );
    };
 
    // TĂ¬m gá»ng kĂ­nh theo mĂ£
@@ -183,7 +230,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       if (frame) {
          setFoundFrame(frame);
       } else {
-         alert('Khong tim thay gong kinh voi ma nay!');
+         alert('Không tìm thấy gọng kính với mã này!');
          setFoundFrame(null);
       }
    };
@@ -259,7 +306,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    const handleCheckout = () => {
       if (!selectedPatient) return;
       if (cart.length === 0) {
-         alert('Gio hang trong!');
+         alert('Giỏ hàng trống!');
          return;
       }
 
@@ -292,16 +339,71 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
       };
 
       db.createInvoice(invoice);
-      db.updatePatient({ ...selectedPatient, status: 'completed' });
+      const completedPatient = { ...selectedPatient, status: 'completed' as const, updatedAt: Date.now() };
+      setWaitingPatients(prev => prev.filter(p => p.id !== selectedPatient.id));
+      db.updatePatient(completedPatient);
 
       window.print();
 
-      alert(`Thanh toan thanh cong: ${total.toLocaleString()} d`);
+      alert(`Thanh toán thành công: ${total.toLocaleString()} đ`);
       setSelectedPatient(null);
       setCart([]);
       setSuggestedLensesOD([]);
       setSuggestedLensesOS([]);
-      refreshData();
+      setInvoices(db.getInvoices());
+      setInventory(db.getInventory());
+   };
+
+   // Thanh toán cho khách lẻ (không qua khám)
+   const handleCheckoutWalkIn = () => {
+      if (cart.length === 0) {
+         alert('Giỏ hàng trống!');
+         return;
+      }
+
+      const subtotalW = cart.reduce((sum, c) => sum + (c.item.price * c.qty), 0);
+      const totalCost = cart.reduce((sum, c) => sum + ((c.item.costPrice || 0) * c.qty), 0);
+      const total = Math.max(0, subtotalW + extraCharges.surcharge - extraCharges.discount);
+      const profit = total - totalCost;
+
+      const invoice = {
+         id: generateId(),
+         patientId: '',
+         patientName: walkInName.trim() || 'Khách lẻ',
+         patientPhone: walkInPhone.trim(),
+         patientAddress: '',
+         items: cart.map(c => ({
+            itemId: c.item.id,
+            name: c.eye ? `${c.item.name} (${c.eye})` : c.item.name,
+            quantity: c.qty,
+            costPrice: c.item.costPrice || 0,
+            price: c.item.price,
+            isLens: c.item.category === 'lens',
+            eye: c.eye
+         })),
+         subtotal: subtotalW,
+         discount: extraCharges.discount,
+         surcharge: extraCharges.surcharge,
+         total,
+         profit,
+         date: Date.now()
+      };
+
+      db.createInvoice(invoice);
+
+      window.print();
+
+      alert(`Thanh toán thành công: ${total.toLocaleString()} đ`);
+      setCart([]);
+      setExtraCharges({ discount: 0, surcharge: 0 });
+      setWalkInName('');
+      setWalkInPhone('');
+      setWalkInRx({ od: { sph: '', cyl: '', add: '' }, os: { sph: '', cyl: '', add: '' } });
+      setFoundFrame(null);
+      setFrameSearchCode('');
+      clearLensSuggestions();
+      setInvoices(db.getInvoices());
+      setInventory(db.getInventory());
    };
 
    // Inventory CRUD
@@ -314,30 +416,30 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
    };
 
    const handleDeleteInventoryItem = (id: string) => {
-      if (confirm('Ban co chac muon xoa san pham nay?')) {
+      if (confirm('Bạn có chắc muốn xóa sản phẩm này?')) {
          db.deleteInventoryItem(id);
          refreshData();
-         alert('Da xoa san pham!');
+         alert('Đã xóa sản phẩm!');
       }
    };
 
    const handleSaveItem = () => {
       if (!newItem.name || !newItem.code) {
-         alert('Vui long nhap ten va ma san pham');
+         alert('Vui lòng nhập tên và mã sản phẩm');
          return;
       }
 
       if (newItem.id) {
          // Update existing item
          db.updateInventory(newItem.id, newItem);
-         alert('Da cap nhat san pham!');
+         alert('Đã cập nhật sản phẩm!');
       } else {
          // Check for duplicate item with same code, name and specs
          const existingItems = db.getInventory();
          let duplicate = null;
 
          if (newItem.category === 'lens') {
-            // Tr?ng kï¿½nh: ki?m tra m? + tï¿½n + SPH + CYL + ADD + chi?t su?t
+            // Tròng kính: kiểm tra mã + tên + SPH + CYL + ADD + chiết suất
             duplicate = existingItems.find(item =>
                item.category === 'lens' &&
                item.code === newItem.code &&
@@ -348,7 +450,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                (item.specs?.material || '') === (newItem.specs?.material || '')
             );
          } else if (newItem.category === 'frame') {
-            // G?ng kï¿½nh: ki?m tra m? + tï¿½n + ch?t li?u
+            // Gọng kính: kiểm tra mã + tên + chất liệu
             duplicate = existingItems.find(item =>
                item.category === 'frame' &&
                item.code === newItem.code &&
@@ -356,7 +458,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                (item.specs?.material || '') === (newItem.specs?.material || '')
             );
          } else if (newItem.category === 'medicine') {
-            // Thu?c: ki?m tra m? + tï¿½n
+            // Thuốc: kiểm tra mã + tên
             duplicate = existingItems.find(item =>
                item.category === 'medicine' &&
                item.code === newItem.code &&
@@ -368,9 +470,9 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
             // Increase quantity of existing item
             const newQuantity = (duplicate.quantity || 0) + (newItem.quantity || 0);
             db.updateInventory(duplicate.id, { quantity: newQuantity });
-            const categoryName = newItem.category === 'lens' ? 'trong kinh' :
-               newItem.category === 'frame' ? 'gong kinh' : 'thuoc';
-            alert(`Da tang so luong ${categoryName} trung: ${duplicate.name} (${newQuantity} cai)`);
+            const categoryName = newItem.category === 'lens' ? 'tròng kính' :
+               newItem.category === 'frame' ? 'gọng kính' : 'thuốc';
+            alert(`Đã tăng số lượng ${categoryName} trùng: ${duplicate.name} (${newQuantity} cái)`);
          } else {
             // Create new item
             const itemToAdd: InventoryItem = {
@@ -385,9 +487,9 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                specs: (newItem.category === 'lens' || newItem.category === 'frame') ? newItem.specs : undefined
             };
             db.addInventoryItem(itemToAdd);
-            const categoryName = newItem.category === 'lens' ? 'trong kinh' :
-               newItem.category === 'frame' ? 'gong kinh' : 'thuoc';
-            alert(`Da them ${categoryName} moi!`);
+            const categoryName = newItem.category === 'lens' ? 'tròng kính' :
+               newItem.category === 'frame' ? 'gọng kính' : 'thuốc';
+            alert(`Đã thêm ${categoryName} mới!`);
          }
       }
 
@@ -401,10 +503,10 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
    // Invoice CRUD handlers
    const handleDeleteInvoice = (invoiceId: string) => {
-      if (confirm('Ban co chac muon xoa hoa don nay? Hanh dong nay khong the hoan tac.')) {
+      if (confirm('Bạn có chắc muốn xóa hóa đơn này? Hành động này không thể hoàn tác.')) {
          db.deleteInvoice(invoiceId);
          refreshData();
-         alert('Da xoa hoa don!');
+         alert('Đã xóa hóa đơn!');
       }
    };
 
@@ -416,7 +518,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          db.updateInvoice(editingInvoice.id, { ...editingInvoice, subtotal, total });
          setEditingInvoice(null);
          refreshData();
-         alert('Da cap nhat hoa don!');
+         alert('Đã cập nhật hóa đơn!');
       }
    };
 
@@ -478,40 +580,114 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
          </div>
 
          {activeTab === 'billing' && (
-            <div className="flex gap-6 h-full overflow-hidden">
-               {/* Waiting List */}
-               <div className="w-1/4 clinic-card p-4 overflow-y-auto">
-                  <h3 className="font-bold mb-4 flex items-center gap-2">
-                     <Glasses size={18} /> Chờ tạo hóa đơn
-                  </h3>
-                  {waitingPatients.length === 0 && (
-                     <p className="text-gray-400 text-sm text-center mt-4">Khong co benh nhan</p>
-                  )}
-                  {waitingPatients.map(p => (
-                     <div
-                        key={p.id}
-                        onClick={() => handleSelectPatient(p)}
-                        className={`p-3 border rounded-lg mb-2 cursor-pointer transition-all ${selectedPatient?.id === p.id ? 'bg-brand-50 border-brand-500 ring-1 ring-brand-500' : 'hover:bg-gray-50'
-                           }`}
-                     >
-                        <div className="font-bold">#{p.ticketNumber} - {p.fullName}</div>
-                        {p.refraction && (
-                           <div className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                              <Eye size={12} /> Co ket qua khuc xa
-                           </div>
-                        )}
-                     </div>
-                  ))}
+            <div className="flex flex-col h-full overflow-hidden">
+               {/* Mode toggle: khách đã khám / khách lẻ */}
+               <div className="flex gap-2 mb-3">
+                  <button
+                     onClick={() => switchBillingMode('exam')}
+                     className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${billingMode === 'exam' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                     <Eye size={16} /> Khách đã khám
+                  </button>
+                  <button
+                     onClick={() => switchBillingMode('walkin')}
+                     className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${billingMode === 'walkin' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                     <FilePlus size={16} /> Khách lẻ (mua nhanh)
+                  </button>
                </div>
+
+               <div className="flex gap-6 flex-1 overflow-hidden">
+               {/* Left panel */}
+               {billingMode === 'exam' ? (
+                  <div className="w-1/4 clinic-card p-4 overflow-y-auto">
+                     <h3 className="font-bold mb-4 flex items-center gap-2">
+                        <Glasses size={18} /> Chờ tạo hóa đơn
+                     </h3>
+                     {waitingPatients.length === 0 && (
+                        <p className="text-slate-500 text-sm text-center mt-4">Không có bệnh nhân</p>
+                     )}
+                     {waitingPatients.map(p => (
+                        <div
+                           key={p.id}
+                           onClick={() => handleSelectPatient(p)}
+                           className={`p-3 border rounded-lg mb-2 cursor-pointer transition-all ${selectedPatient?.id === p.id ? 'bg-brand-50 border-brand-500 ring-1 ring-brand-500' : 'hover:bg-gray-50'
+                              }`}
+                        >
+                           <div className="font-bold">#{p.ticketNumber} - {p.fullName}</div>
+                           {p.refraction && (
+                              <div className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                                 <Eye size={12} /> Có kết quả khúc xạ
+                              </div>
+                           )}
+                        </div>
+                     ))}
+                  </div>
+               ) : (
+                  <div className="w-1/4 clinic-card p-4 overflow-y-auto">
+                     <h3 className="font-bold mb-4 flex items-center gap-2">
+                        <FilePlus size={18} /> Thông tin khách lẻ
+                     </h3>
+                     <div className="space-y-3">
+                        <div>
+                           <label className="text-xs text-gray-500">Tên khách hàng</label>
+                           <input
+                              placeholder="Khách lẻ"
+                              className="w-full border p-2 rounded mt-1"
+                              value={walkInName}
+                              onChange={e => setWalkInName(e.target.value)}
+                           />
+                        </div>
+                        <div>
+                           <label className="text-xs text-gray-500">Số điện thoại</label>
+                           <input
+                              placeholder="SĐT (tùy chọn)"
+                              className="w-full border p-2 rounded mt-1"
+                              value={walkInPhone}
+                              onChange={e => setWalkInPhone(e.target.value)}
+                           />
+                        </div>
+                     </div>
+
+                     <div className="mt-4 pt-3 border-t">
+                        <h4 className="font-bold text-sm text-gray-700 mb-2">Tìm tròng theo độ</h4>
+                        <div className="grid grid-cols-4 gap-1 text-[10px] font-bold text-gray-400 text-center mb-1">
+                           <div></div><div>SPH</div><div>CYL</div><div>ADD</div>
+                        </div>
+                        {(['od', 'os'] as const).map(eye => (
+                           <div key={eye} className="grid grid-cols-4 gap-1 mb-1 items-center">
+                              <span className="text-xs font-bold text-gray-600">{eye.toUpperCase()}</span>
+                              {(['sph', 'cyl', 'add'] as const).map(field => (
+                                 <input
+                                    key={field}
+                                    className="border p-1 rounded text-center text-xs"
+                                    value={walkInRx[eye][field]}
+                                    onChange={e => setWalkInRx(prev => ({
+                                       ...prev,
+                                       [eye]: { ...prev[eye], [field]: e.target.value }
+                                    }))}
+                                 />
+                              ))}
+                           </div>
+                        ))}
+                        <button
+                           onClick={searchWalkInLenses}
+                           className="w-full mt-2 py-2 bg-brand-600 text-white rounded text-sm font-bold hover:bg-brand-700 flex items-center justify-center gap-1"
+                        >
+                           <Search size={14} /> Tìm tròng phù hợp
+                        </button>
+                     </div>
+                  </div>
+               )}
 
                {/* Checkout Area */}
                <div className="flex-1 clinic-card p-6 flex flex-col overflow-y-auto">
-                  {selectedPatient ? (
+                  {(selectedPatient || billingMode === 'walkin') ? (
                      <>
-                        <h2 className="text-2xl font-bold mb-4">Hóa đơn: {selectedPatient.fullName}</h2>
+                        <h2 className="text-2xl font-bold mb-4">Hóa đơn: {selectedPatient ? selectedPatient.fullName : (walkInName.trim() || 'Khách lẻ')}</h2>
 
                         {/* Prescription Info */}
-                        {selectedPatient.refraction && (
+                        {selectedPatient?.refraction && (
                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 mb-4 text-sm">
                               <h4 className="font-bold text-blue-800 mb-2">Thông số kính điều chỉnh:</h4>
                               <div className="grid grid-cols-2 gap-2">
@@ -687,7 +863,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                               >
                                  <div>
                                     <div className="font-bold">{foundFrame.name}</div>
-                                    <div className="text-sm text-gray-500">Ma: {foundFrame.code} | Chat lieu: {foundFrame.specs?.material}</div>
+                                    <div className="text-sm text-gray-500">Mã: {foundFrame.code} | Chất liệu: {foundFrame.specs?.material}</div>
                                  </div>
                                  <div className="text-right">
                                     <div className="font-bold text-brand-600">{foundFrame.price.toLocaleString()} d</div>
@@ -701,7 +877,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         <div className="relative mb-4">
                            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
                            <input
-                              placeholder="Quet ma vach hoac nhap ma san pham khac..."
+                              placeholder="Quét mã vạch hoặc nhập mã sản phẩm khác..."
                               className="w-full pl-10 border p-2 rounded"
                               onChange={(e) => {
                                  const match = inventory.find(i => i.code === e.target.value);
@@ -717,15 +893,15 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  <tr>
                                     <th className="text-left p-2">Sản phẩm</th>
                                     <th className="text-center p-2">SL</th>
-                                    <th className="text-right p-2">Don gia</th>
-                                    <th className="text-right p-2">Thanh tien</th>
+                                    <th className="text-right p-2">Đơn giá</th>
+                                    <th className="text-right p-2">Thành tiền</th>
                                     <th className="p-2 w-10"></th>
                                  </tr>
                               </thead>
                               <tbody>
                                  {cart.length === 0 && (
                                     <tr>
-                                       <td colSpan={5} className="p-4 text-center text-gray-400">Chua co san pham trong gio</td>
+                                       <td colSpan={5} className="p-4 text-center text-slate-500">Chưa có sản phẩm trong giỏ</td>
                                     </tr>
                                  )}
                                  {cart.map((c, idx) => (
@@ -734,8 +910,8 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                           {c.item.name}
                                           {c.eye && <span className="text-xs bg-purple-100 text-purple-600 px-1 ml-1 rounded">{c.eye}</span>}
                                           <span className="text-xs text-gray-400 ml-1">({c.item.code})</span>
-                                          {c.item.category === 'lens' && <span className="text-xs bg-blue-100 text-blue-600 px-1 ml-1 rounded">Trong</span>}
-                                          {c.item.category === 'frame' && <span className="text-xs bg-orange-100 text-orange-600 px-1 ml-1 rounded">Gong</span>}
+                                          {c.item.category === 'lens' && <span className="text-xs bg-blue-100 text-blue-600 px-1 ml-1 rounded">Tròng</span>}
+                                          {c.item.category === 'frame' && <span className="text-xs bg-orange-100 text-orange-600 px-1 ml-1 rounded">Gọng</span>}
                                        </td>
                                        <td className="p-2 text-center">
                                           <input
@@ -766,11 +942,11 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                         <div className="border-t pt-4 mt-4 space-y-2">
                            <div className="flex justify-between text-sm">
-                              <span>Tam tinh:</span>
+                              <span>Tạm tính:</span>
                               <span className="font-medium">{subtotal.toLocaleString()} d</span>
                            </div>
                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-gray-600">Phu thu (Kham, thu thuat):</span>
+                              <span className="text-gray-600">Phụ thu (Khám, thủ thuật):</span>
                               <input
                                  type="number" className="border rounded p-1 text-right w-32"
                                  value={extraCharges.surcharge}
@@ -778,7 +954,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                               />
                            </div>
                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-gray-600">Giam gia / Voucher:</span>
+                              <span className="text-gray-600">Giảm giá / Voucher:</span>
                               <input
                                  type="number" className="border rounded p-1 text-right w-32 text-red-500"
                                  value={extraCharges.discount}
@@ -787,11 +963,11 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                            </div>
 
                            <div className="flex justify-between text-2xl font-bold border-t pt-2 mt-2">
-                              <span>Tong cong:</span>
+                              <span>Tổng cộng:</span>
                               <span className="text-brand-600">{finalTotal.toLocaleString()} d</span>
                            </div>
 
-                           <button onClick={handleCheckout} className="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 flex justify-center items-center gap-2 mt-4">
+                           <button onClick={() => selectedPatient ? handleCheckout() : handleCheckoutWalkIn()} className="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 flex justify-center items-center gap-2 mt-4">
                               <Printer /> Thanh toán & In hóa đơn
                            </button>
                         </div>
@@ -806,16 +982,17 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                {/* Hidden Print Area - Tách biệt component in hóa đơn */}
                <div className="print-area">
-                  {selectedPatient && (
+                  {(selectedPatient || billingMode === 'walkin') && (
                      <InvoicePrint
                         settings={settings}
-                        patient={selectedPatient}
+                        patient={selectedPatient || ({ fullName: walkInName.trim() || 'Khách lẻ', phone: walkInPhone.trim() } as Patient)}
                         cart={cart}
                         subtotal={subtotal}
                         extraCharges={extraCharges}
                         finalTotal={finalTotal}
                      />
                   )}
+               </div>
                </div>
             </div>
          )}
@@ -829,26 +1006,26 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                      onClick={() => setInventoryCategoryTab('lens')}
                      className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${inventoryCategoryTab === 'lens' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                   >
-                     <Eye size={18} /> Trong kinh
+                     <Eye size={18} /> Tròng kính
                   </button>
                   <button
                      onClick={() => setInventoryCategoryTab('frame')}
                      className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${inventoryCategoryTab === 'frame' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                   >
-                     <Glasses size={18} /> Gong kinh
+                     <Glasses size={18} /> Gọng kính
                   </button>
                   <button
                      onClick={() => setInventoryCategoryTab('medicine')}
                      className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${inventoryCategoryTab === 'medicine' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                   >
-                     <Plus size={18} /> Thuoc
+                     <Plus size={18} /> Thuốc
                   </button>
                </div>
 
                <div className="flex justify-between mb-4">
                   <input
-                     placeholder={`Tim kiem ${inventoryCategoryTab === 'lens' ? 'trong kinh' : inventoryCategoryTab === 'frame' ? 'gong kinh' : 'thuoc'}...`}
-                     className="border p-2 rounded w-96"
+                     placeholder={`Tìm kiếm ${inventoryCategoryTab === 'lens' ? 'tròng kính' : inventoryCategoryTab === 'frame' ? 'gọng kính' : 'thuốc'}...`}
+                     className="clinic-input w-96 max-w-full"
                      value={searchInv} onChange={e => setSearchInv(e.target.value)}
                   />
                   <button
@@ -860,21 +1037,21 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         });
                         setShowAddItem(true);
                      }}
-                     className="bg-green-600 text-white px-4 py-2 rounded flex items-center gap-2 hover:bg-green-700"
+                     className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 font-medium"
                   >
-                     <FilePlus size={18} /> Nhap Moi
+                     <FilePlus size={18} /> Nhập mới
                   </button>
                </div>
                <div className="overflow-auto flex-1">
-                  <table className="w-full text-left">
-                     <thead className="bg-gray-100 sticky top-0">
+                  <table className="w-full text-left clinic-table">
+                     <thead className="sticky top-0">
                         <tr>
-                           <th className="p-3">Ma</th>
-                           <th className="p-3">Ten san pham</th>
-                           <th className="p-3">Ton kho</th>
-                           <th className="p-3">Don gia</th>
-                           <th className="p-3">Thong so</th>
-                           <th className="p-3 text-center">Tac vu</th>
+                           <th className="p-3">Mã</th>
+                           <th className="p-3">Tên sản phẩm</th>
+                           <th className="p-3">Tồn kho</th>
+                           <th className="p-3">Đơn giá</th>
+                           <th className="p-3">Thông số</th>
+                           <th className="p-3 text-center">Tác vụ</th>
                         </tr>
                      </thead>
                      <tbody>
@@ -903,14 +1080,14 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                        <button
                                           onClick={() => handleEditItem(item)}
                                           className="text-blue-600 hover:text-blue-800 bg-blue-50 p-2 rounded-full transition-colors"
-                                          title="Sua san pham"
+                                          title="Sửa sản phẩm"
                                        >
                                           <Edit size={16} />
                                        </button>
                                        <button
                                           onClick={() => handleDeleteInventoryItem(item.id)}
                                           className="text-red-600 hover:text-red-800 bg-red-50 p-2 rounded-full transition-colors"
-                                          title="Xoa san pham"
+                                          title="Xóa sản phẩm"
                                        >
                                           <Trash2 size={16} />
                                        </button>
@@ -921,7 +1098,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         {filteredInventory.filter(item => item.category === inventoryCategoryTab).length === 0 && (
                            <tr>
                               <td colSpan={6} className="p-8 text-center text-gray-400">
-                                 Chua co {inventoryCategoryTab === 'lens' ? 'trong kinh' : inventoryCategoryTab === 'frame' ? 'gong kinh' : 'thuoc'} trong kho
+                                 Chưa có {inventoryCategoryTab === 'lens' ? 'tròng kính' : inventoryCategoryTab === 'frame' ? 'gọng kính' : 'thuốc'} trong kho
                               </td>
                            </tr>
                         )}
@@ -938,14 +1115,14 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-10">
                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
                   <div className="bg-brand-50 px-6 py-4 border-b flex justify-between items-center">
-                     <h3 className="font-bold text-brand-800">{newItem.id ? 'Cap Nhat San Pham' : 'Them Hang Hoa Moi'}</h3>
+                     <h3 className="font-bold text-brand-800">{newItem.id ? 'Cập nhật sản phẩm' : 'Thêm hàng hóa mới'}</h3>
                      <button onClick={() => setShowAddItem(false)} className="text-gray-500 hover:text-red-500">
                         <X size={20} />
                      </button>
                   </div>
                   <div className="p-6 space-y-4">
                      <div>
-                        <label className="block text-sm font-medium mb-1">Loai hang</label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Loại hàng</label>
                         <div className="flex gap-4">
                            {(['lens', 'frame', 'medicine'] as const).map(type => (
                               <label key={type} className="flex items-center gap-2 cursor-pointer">
@@ -954,29 +1131,27 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                     checked={newItem.category === type}
                                     onChange={() => setNewItem({ ...newItem, category: type, specs: { sph: '', cyl: '', add: '', material: '', type: 'single', note: '' } })}
                                  />
-                                 <span className="capitalize">{type === 'lens' ? 'Trong kinh' : type === 'frame' ? 'Gong kinh' : 'Thuoc'}</span>
+                                 <span>{type === 'lens' ? 'Tròng kính' : type === 'frame' ? 'Gọng kính' : 'Thuốc'}</span>
                               </label>
                            ))}
                         </div>
                      </div>
 
-                     {/* Tï¿½n hï¿½ng hï¿½a - full width v?i g?i ? */}
                      <div className="relative">
-                        <label className="block text-sm font-medium mb-1">Ten hang hoa *</label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Tên hàng hóa *</label>
                         <input
-                           className="w-full border rounded p-2"
+                           className="clinic-input"
                            value={newItem.name}
                            onChange={e => handleNameChange(e.target.value)}
                            onFocus={() => newItem.name && newItem.name.length >= 2 && setShowNameSuggestions(nameSuggestions.length > 0)}
                            onBlur={() => setTimeout(() => setShowNameSuggestions(false), 200)}
-                           placeholder="Nhap ten de tim san pham co san..."
+                           placeholder="Nhập tên để tìm sản phẩm có sẵn..."
                         />
-                        <p className="text-xs text-gray-400 mt-1"> Nhap ten san pham, he thong se tu dong goi y neu da co trong kho</p>
-                        {/* Dropdown g?i ? */}
+                        <p className="text-xs text-slate-500 mt-1">Nhập tên sản phẩm, hệ thống sẽ tự động gợi ý nếu đã có trong kho</p>
                         {showNameSuggestions && nameSuggestions.length > 0 && (
                            <div className="absolute z-50 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
                               <div className="px-3 py-2 bg-green-50 text-green-700 text-xs font-medium border-b">
-                                 Tim thay {nameSuggestions.length} san pham - Click de tu dong dien
+                                 Tìm thấy {nameSuggestions.length} sản phẩm — Nhấn để tự động điền
                               </div>
                               {nameSuggestions.map(item => (
                                  <div
@@ -986,9 +1161,9 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  >
                                     <div className="font-medium text-gray-800">{item.name}</div>
                                     <div className="text-xs text-gray-500 flex gap-3">
-                                       <span>Ma: {item.code}</span>
-                                       <span>Gia: {item.price?.toLocaleString()}d</span>
-                                       <span>Ton: {item.quantity}</span>
+                                       <span>Mã: {item.code}</span>
+                                       <span>Giá: {item.price?.toLocaleString()} đ</span>
+                                       <span>Tồn: {item.quantity}</span>
                                        {item.specs?.material && <span>CL: {item.specs.material}</span>}
                                     </div>
                                  </div>
@@ -997,38 +1172,36 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         )}
                      </div>
 
-                     {/* M? hï¿½ng */}
                      <div>
-                        <label className="block text-sm font-medium mb-1">Ma hang (Code) *</label>
-                        <input className="w-full border rounded p-2" value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="VD: LENS01, FRAME001..." />
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Mã hàng (Code) *</label>
+                        <input className="clinic-input" value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="VD: LENS01, FRAME001..." />
                      </div>
 
                      <div className="grid grid-cols-4 gap-4">
                         <div>
-                           <label className="block text-sm font-medium mb-1">Gia nhap</label>
-                           <input type="number" className="w-full border rounded p-2" value={newItem.costPrice} onChange={e => setNewItem({ ...newItem, costPrice: parseInt(e.target.value) || 0 })} />
+                           <label className="block text-sm font-medium mb-1">Giá nhập</label>
+                           <input type="number" className="clinic-input" value={newItem.costPrice} onChange={e => setNewItem({ ...newItem, costPrice: parseInt(e.target.value) || 0 })} />
                         </div>
                         <div>
-                           <label className="block text-sm font-medium mb-1">Gia ban</label>
-                           <input type="number" className="w-full border rounded p-2" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: parseInt(e.target.value) })} />
+                           <label className="block text-sm font-medium mb-1">Giá bán</label>
+                           <input type="number" className="clinic-input" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: parseInt(e.target.value) })} />
                         </div>
                         <div>
-                           <label className="block text-sm font-medium mb-1">So luong</label>
-                           <input type="number" className="w-full border rounded p-2" value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: parseInt(e.target.value) })} />
+                           <label className="block text-sm font-medium mb-1">Số lượng</label>
+                           <input type="number" className="clinic-input" value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: parseInt(e.target.value) })} />
                         </div>
                         <div>
-                           <label className="block text-sm font-medium mb-1">Ton toi thieu</label>
-                           <input type="number" className="w-full border rounded p-2" value={newItem.minStock} onChange={e => setNewItem({ ...newItem, minStock: parseInt(e.target.value) })} />
+                           <label className="block text-sm font-medium mb-1">Tồn tối thiểu</label>
+                           <input type="number" className="clinic-input" value={newItem.minStock} onChange={e => setNewItem({ ...newItem, minStock: parseInt(e.target.value) })} />
                         </div>
                      </div>
 
-                     {/* Specific Fields for Lens */}
                      {newItem.category === 'lens' && (
                         <div className="bg-blue-50 p-4 rounded border border-blue-100">
-                           <h4 className="font-bold text-sm text-blue-800 mb-2">Thong so Trong</h4>
+                           <h4 className="font-bold text-sm text-blue-800 mb-2">Thông số tròng</h4>
                            <div className="grid grid-cols-2 gap-3">
                               <div>
-                                 <label className="text-xs">Do Cau (SPH)</label>
+                                 <label className="text-xs font-medium text-slate-700">Độ cầu (SPH)</label>
                                  <input
                                     className="border rounded w-full p-1"
                                     type="text"
@@ -1043,7 +1216,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  />
                               </div>
                               <div>
-                                 <label className="text-xs">Do Loan (CYL)</label>
+                                 <label className="text-xs font-medium text-slate-700">Độ loạn (CYL)</label>
                                  <input
                                     className="border rounded w-full p-1"
                                     type="text"
@@ -1057,7 +1230,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  />
                               </div>
                               <div>
-                                 <label className="text-xs">Do ADD (neu co)</label>
+                                 <label className="text-xs font-medium text-slate-700">Độ ADD (nếu có)</label>
                                  <input
                                     className="border rounded w-full p-1"
                                     type="text"
@@ -1071,22 +1244,22 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                  />
                               </div>
                               <div>
-                                 <label className="text-xs">Chiet suat</label>
+                                 <label className="text-xs font-medium text-slate-700">Chiết suất</label>
                                  <input className="border rounded w-full p-1" placeholder="1.56, 1.61..." value={newItem.specs.material} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, material: e.target.value } })} />
                               </div>
                               <div className="col-span-2">
-                                 <label className="text-xs">Loai trong</label>
-                                 <select className="border rounded w-full p-1" value={newItem.specs.type} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, type: e.target.value } })}>
-                                    <option value="single">Don trong</option>
-                                    <option value="bifocal">Hai trong</option>
-                                    <option value="pal">Da trong (Progressive)</option>
+                                 <label className="text-xs font-medium text-slate-700">Loại tròng</label>
+                                 <select className="clinic-input" value={newItem.specs.type} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, type: e.target.value } })}>
+                                    <option value="single">Đơn tròng</option>
+                                    <option value="bifocal">Hai tròng</option>
+                                    <option value="pal">Đa tròng (Progressive)</option>
                                  </select>
                               </div>
                               <div className="col-span-2">
-                                 <label className="text-xs">Ghi chu (do kinh bo sung...)</label>
+                                 <label className="text-xs font-medium text-slate-700">Ghi chú (độ kính bổ sung...)</label>
                                  <input
-                                    className="border rounded w-full p-1"
-                                    placeholder="VD: Do kinh -2.50 den -4.00, trong loc anh sang xanh..."
+                                    className="clinic-input"
+                                    placeholder="VD: Độ kính -2.50 đến -4.00, tròng lọc ánh sáng xanh..."
                                     value={newItem.specs.note ?? ''}
                                     onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, note: e.target.value } })}
                                  />
@@ -1097,15 +1270,15 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                      {newItem.category === 'frame' && (
                         <div className="bg-orange-50 p-4 rounded border border-orange-100">
-                           <h4 className="font-bold text-sm text-orange-800 mb-2">Thong so Gong</h4>
-                           <label className="text-xs">Chat lieu</label>
-                           <input className="border rounded w-full p-1" placeholder="Nhua, Kim loai..." value={newItem.specs.material} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, material: e.target.value } })} />
+                           <h4 className="font-bold text-sm text-orange-800 mb-2">Thông số gọng</h4>
+                           <label className="text-xs font-medium text-slate-700">Chất liệu</label>
+                           <input className="clinic-input" placeholder="Nhựa, Kim loại..." value={newItem.specs.material} onChange={e => setNewItem({ ...newItem, specs: { ...newItem.specs, material: e.target.value } })} />
                         </div>
                      )}
 
                      <div className="flex justify-end gap-3 pt-4 border-t">
-                        <button onClick={() => setShowAddItem(false)} className="px-4 py-2 text-gray-600">Huy</button>
-                        <button onClick={handleSaveItem} className="px-4 py-2 bg-brand-600 text-white font-bold rounded hover:bg-brand-700">Luu san pham</button>
+                        <button onClick={() => setShowAddItem(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg">Hủy</button>
+                        <button onClick={handleSaveItem} className="px-4 py-2 bg-brand-600 text-white font-bold rounded-lg hover:bg-brand-700">Lưu sản phẩm</button>
                      </div>
                   </div>
                </div>
@@ -1190,7 +1363,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                               <td className="p-3 text-right font-bold text-green-600">
                                  {inv.total.toLocaleString()} d
                                  {inv.discount > 0 && (
-                                    <div className="text-xs text-gray-400">Giam: {inv.discount.toLocaleString()}</div>
+                                    <div className="text-xs text-gray-400">Giảm: {inv.discount.toLocaleString()}</div>
                                  )}
                               </td>
                               <td className="p-3 text-center">
@@ -1198,28 +1371,28 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                                     <button
                                        onClick={() => setViewingInvoice(inv)}
                                        className="p-2 bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
-                                       title="Xem chi tiet"
+                                       title="Xem chi tiết"
                                     >
                                        <Eye size={16} />
                                     </button>
                                     <button
                                        onClick={() => setEditingInvoice({ ...inv })}
                                        className="p-2 bg-yellow-100 text-yellow-600 rounded hover:bg-yellow-200"
-                                       title="Sua hoa don"
+                                       title="Sửa hóa đơn"
                                     >
                                        <Edit size={16} />
                                     </button>
                                     <button
                                        onClick={() => handleDeleteInvoice(inv.id)}
                                        className="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200"
-                                       title="Xoa hoa don"
+                                       title="Xóa hóa đơn"
                                     >
                                        <Trash2 size={16} />
                                     </button>
                                     <button
                                        onClick={() => handlePrintInvoice(inv)}
                                        className="p-2 bg-gray-100 rounded hover:bg-gray-200"
-                                       title="In lai hoa don"
+                                       title="In lại hóa đơn"
                                     >
                                        <Printer size={16} />
                                     </button>
@@ -1235,7 +1408,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === invoiceMonth;
                }).length === 0 && (
                      <div className="text-center text-gray-400 py-8">
-                        Khong co hoa don nao trong thang nay
+                        Không có hóa đơn nào trong tháng này
                      </div>
                   )}
             </div>
@@ -1256,15 +1429,15 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                      <div className="space-y-3 mb-4">
                         <div className="flex justify-between border-b pb-2">
-                           <span className="text-gray-600">Ma hoa don:</span>
+                           <span className="text-gray-600">Mã hóa đơn:</span>
                            <span className="font-mono text-sm">{viewingInvoice.id.slice(0, 8)}...</span>
                         </div>
                         <div className="flex justify-between border-b pb-2">
-                           <span className="text-gray-600">Khach hang:</span>
+                           <span className="text-gray-600">Khách hàng:</span>
                            <span className="font-bold">{viewingInvoice.patientName}</span>
                         </div>
                         <div className="flex justify-between border-b pb-2">
-                           <span className="text-gray-600">Ngay tao:</span>
+                           <span className="text-gray-600">Ngày tạo:</span>
                            <span>{new Date(viewingInvoice.date).toLocaleString('vi-VN')}</span>
                         </div>
                      </div>
@@ -1281,23 +1454,23 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                      <div className="space-y-2 border-t pt-4">
                         <div className="flex justify-between">
-                           <span>Tam tinh:</span>
+                           <span>Tạm tính:</span>
                            <span>{viewingInvoice.subtotal?.toLocaleString()} d</span>
                         </div>
                         {viewingInvoice.discount > 0 && (
                            <div className="flex justify-between text-red-600">
-                              <span>Giam gia:</span>
+                              <span>Giảm giá:</span>
                               <span>-{viewingInvoice.discount.toLocaleString()} d</span>
                            </div>
                         )}
                         {viewingInvoice.surcharge > 0 && (
                            <div className="flex justify-between text-orange-600">
-                              <span>Phu thu:</span>
+                              <span>Phụ thu:</span>
                               <span>+{viewingInvoice.surcharge.toLocaleString()} d</span>
                            </div>
                         )}
                         <div className="flex justify-between font-bold text-lg text-green-600 border-t pt-2">
-                           <span>Tong cong:</span>
+                           <span>Tổng cộng:</span>
                            <span>{viewingInvoice.total.toLocaleString()} d</span>
                         </div>
                      </div>
@@ -1306,7 +1479,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                         onClick={() => setViewingInvoice(null)}
                         className="mt-4 w-full py-2 bg-brand-600 text-white font-bold rounded hover:bg-brand-700"
                      >
-                        Dong
+                        Đóng
                      </button>
                   </div>
                </div>
@@ -1327,7 +1500,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                      <div className="space-y-4">
                         <div>
-                           <label className="block text-sm font-medium mb-1">Ten khach hang</label>
+                           <label className="block text-sm font-medium mb-1">Tên khách hàng</label>
                            <input
                               className="w-full border rounded p-2"
                               value={editingInvoice.patientName}
@@ -1361,7 +1534,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                         <div className="grid grid-cols-2 gap-4">
                            <div>
-                              <label className="block text-sm font-medium mb-1">Giam gia (d)</label>
+                              <label className="block text-sm font-medium mb-1">Giảm giá (đ)</label>
                               <input
                                  type="number"
                                  className="w-full border rounded p-2"
@@ -1370,7 +1543,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                               />
                            </div>
                            <div>
-                              <label className="block text-sm font-medium mb-1">Phu thu (d)</label>
+                              <label className="block text-sm font-medium mb-1">Phụ thu (đ)</label>
                               <input
                                  type="number"
                                  className="w-full border rounded p-2"
@@ -1382,7 +1555,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
 
                         <div className="bg-green-50 p-3 rounded border border-green-200">
                            <div className="flex justify-between font-bold text-lg text-green-700">
-                              <span>Tong cong (uoc tinh):</span>
+                              <span>Tổng cộng (ước tính):</span>
                               <span>
                                  {(editingInvoice.items.reduce((s: number, i: any) => s + (i.quantity * i.price), 0)
                                     - editingInvoice.discount + editingInvoice.surcharge).toLocaleString()} d
@@ -1396,13 +1569,13 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                            onClick={() => setEditingInvoice(null)}
                            className="flex-1 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300"
                         >
-                           Huy
+                           Hủy
                         </button>
                         <button
                            onClick={handleUpdateInvoice}
                            className="flex-1 py-2 bg-brand-600 text-white font-bold rounded hover:bg-brand-700"
                         >
-                           Luu thay doi
+                           Lưu thay đổi
                         </button>
                      </div>
                   </div>
@@ -1418,7 +1591,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                   <div style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase' }}>{settings.name || 'PHÒNG KHÁM MẮT'}</div>
                   {settings.doctorName && <div style={{ fontSize: '9px' }}>{settings.doctorName}</div>}
                   {settings.phone && <div style={{ fontSize: '9px' }}>DT: {settings.phone}</div>}
-                  <div style={{ fontWeight: 'bold', marginTop: '3mm', fontSize: '11px' }}>HOA DON BAN LE</div>
+                  <div style={{ fontWeight: 'bold', marginTop: '3mm', fontSize: '11px' }}>HÓA ĐƠN BÁN LẺ</div>
                </div>
 
                {/* Thông tin hóa đơn */}
@@ -1427,8 +1600,8 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                      <span>{printingInvoice.date ? new Date(printingInvoice.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''}</span>
                      <span>{printingInvoice.date ? new Date(printingInvoice.date).toLocaleDateString('vi-VN') : ''}</span>
                   </div>
-                  <div style={{ fontWeight: 'bold', marginTop: '1mm' }}>KH: {printingInvoice.patientName || 'Khach le'}</div>
-                  {printingInvoice.patientPhone && <div>SDT: {printingInvoice.patientPhone}</div>}
+                  <div style={{ fontWeight: 'bold', marginTop: '1mm' }}>KH: {printingInvoice.patientName || 'Khách lẻ'}</div>
+                  {printingInvoice.patientPhone && <div>SĐT: {printingInvoice.patientPhone}</div>}
                </div>
 
                {/* Chi tiết sản phẩm */}
@@ -1437,7 +1610,7 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                      <div key={idx} style={{ marginBottom: '2mm', fontSize: '9px' }}>
                         <div style={{ fontWeight: '500' }}>{idx + 1}. {item.name}</div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '3mm', color: '#333' }}>
-                           <span>{item.quantity} x {item.price?.toLocaleString()}d</span>
+                           <span>{item.quantity} x {item.price?.toLocaleString()}đ</span>
                            <span style={{ fontWeight: 'bold' }}>{(item.price * item.quantity).toLocaleString()}</span>
                         </div>
                      </div>
@@ -1447,34 +1620,34 @@ export const BillingInventory: React.FC<BillingInventoryProps> = ({ activeTab: i
                {/* Tổng tiền */}
                <div style={{ marginTop: '2mm', fontSize: '9px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                     <span>Tam tinh:</span>
+                     <span>Tạm tính:</span>
                      <span>{(printingInvoice.items?.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0) || 0).toLocaleString()}</span>
                   </div>
 
                   {printingInvoice.surcharge > 0 && (
                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Phu thu:</span>
+                        <span>Phụ thu:</span>
                         <span>+{printingInvoice.surcharge.toLocaleString()}</span>
                      </div>
                   )}
 
                   {printingInvoice.discount > 0 && (
                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'red' }}>
-                        <span>Giam gia:</span>
+                        <span>Giảm giá:</span>
                         <span>-{printingInvoice.discount.toLocaleString()}</span>
                      </div>
                   )}
                </div>
 
                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '12px', marginTop: '2mm', borderTop: '1px dashed black', paddingTop: '2mm' }}>
-                  <span>TONG CONG:</span>
+                  <span>TỔNG CỘNG:</span>
                   <span>{printingInvoice.total?.toLocaleString()}</span>
                </div>
 
                {/* Footer */}
                <div style={{ textAlign: 'center', marginTop: '4mm', fontSize: '9px', fontStyle: 'italic' }}>
-                  Cam on quy khach!<br />
-                  Hen gap lai
+                  Cảm ơn quý khách!<br />
+                  Hẹn gặp lại
                </div>
             </div>
          )}

@@ -41,7 +41,7 @@ export function mergePatients(local: Patient[], remote: Patient[], deletedIds: s
         const existing = map.get(p.id);
         const pUpdated = p.updatedAt || p.timestamp || 0;
         const eUpdated = existing ? (existing.updatedAt || existing.timestamp || 0) : 0;
-        if (!existing || pUpdated >= eUpdated) map.set(p.id, p);
+        if (!existing || pUpdated > eUpdated) map.set(p.id, p);
     }
     return Array.from(map.values());
 }
@@ -51,8 +51,8 @@ export function mergeInventory(local: InventoryItem[], remote?: InventoryItem[])
     if (!remote || remote.length === 0) return local || [];
     if (!local || local.length === 0) return remote;
     const map = new Map<string, InventoryItem>();
-    for (const i of local) map.set(i.id, i);
     for (const i of remote) map.set(i.id, i);
+    for (const i of local) map.set(i.id, i);
     return Array.from(map.values());
 }
 
@@ -60,16 +60,23 @@ export function mergeInvoices(local: Invoice[], remote?: Invoice[]): Invoice[] {
     if (!remote || remote.length === 0) return local || [];
     if (!local || local.length === 0) return remote;
     const map = new Map<string, Invoice>();
-    for (const i of local) map.set(i.id, i);
     for (const i of remote) map.set(i.id, i);
+    for (const i of local) map.set(i.id, i);
     return Array.from(map.values());
 }
 
-export function computeDataHash(data: { patients?: Patient[]; syncMeta?: SyncMeta }): string {
+export function computeDataHash(data: {
+    patients?: Patient[];
+    inventory?: InventoryItem[];
+    invoices?: Invoice[];
+    syncMeta?: SyncMeta;
+}): string {
     const patients = data.patients || [];
     const ids = patients.map(p => `${p.id}:${p.updatedAt || p.timestamp}:${p.status}`).sort().join('|');
     const deleted = (data.syncMeta?.deletedPatientIds || []).length;
-    return `${patients.length}:${deleted}:${ids}:${data.syncMeta?.version || 0}:${data.syncMeta?.lastUpdated || 0}`;
+    const invSig = (data.inventory || []).map(i => `${i.id}:${i.quantity}`).sort().join('|');
+    const invSig2 = (data.invoices || []).map(i => `${i.id}:${i.total}`).sort().join('|');
+    return `${patients.length}:${deleted}:${ids}:${invSig}:${invSig2}:${data.syncMeta?.version || 0}:${data.syncMeta?.lastUpdated || 0}`;
 }
 
 export function sanitizeIncomingData(data: any) {

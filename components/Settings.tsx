@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/db';
+import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 import { ClinicSettings } from '../types';
-import { Save, Download, Upload, Settings as SettingsIcon, Printer, Database, FileText, Clock, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock } from 'lucide-react';
+import { Save, Download, Upload, Settings as SettingsIcon, Database, FileText, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock } from 'lucide-react';
 
-type SettingsTab = 'general' | 'vat' | 'invoice' | 'ticket' | 'refraction' | 'backup' | 'security';
+type SettingsTab = 'general' | 'vat' | 'refraction' | 'backup' | 'security';
 
 interface BackupRecord {
   id: string;
@@ -41,7 +42,7 @@ export const Settings: React.FC = () => {
     refraction: {
       header: 'PHÒNG KHÁM MẮT NGOÀI GIỜ',
       rightHeader: 'KHÁM KHÚC XẠ',
-      disclaimer1: 'Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghỉ của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.',
+      disclaimer1: 'Khách hàng đã được đeo thử kính và cảm thấy thoải mái khi đi lại, không có hiện tượng nhức mắt hay đau đầu. Mức độ thích nghi của mỗi người có thể khác nhau, vì vậy thời gian làm quen với kính có thể từ 5–7 ngày.',
       disclaimer2: 'Khách hàng đã được tư vấn về độ kính phù hợp, mọi điều chỉnh theo nhu cầu riêng sẽ được thực hiện theo mong muốn cá nhân sau khi đã được giải thích rõ ràng.',
     },
     backup: {
@@ -97,17 +98,7 @@ export const Settings: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    loadSettingsFromDb();
-
-    // Listen for data updates from server
-    const handleDbUpdate = () => {
-      loadSettingsFromDb();
-    };
-
-    window.addEventListener('clinic-db-updated', handleDbUpdate);
-    return () => window.removeEventListener('clinic-db-updated', handleDbUpdate);
-  }, []);
+  useClinicDbUpdated(() => loadSettingsFromDb());
 
   // Load backups when switching to backup tab
   useEffect(() => {
@@ -177,18 +168,23 @@ export const Settings: React.FC = () => {
     const ticket = settings.ticket || { header: '', subHeader: '', note: '', footer: '' };
     const invoice = settings.invoice || { header: '', footer: '', showLogo: false };
 
-    // Đồng bộ tên PK sang các mẫu in nếu chưa tùy chỉnh riêng
     const syncName = settings.name?.trim() || '';
+    const syncDoctor = settings.doctorName?.trim() || '';
+
+    // Đồng bộ phiếu STT & phiếu KX với thông tin chung mỗi khi Lưu
+    const syncedTicket = {
+      ...ticket,
+      header: syncName || ticket.header?.trim() || '',
+      subHeader: syncDoctor || ticket.subHeader?.trim() || '',
+    };
+    const syncedRefraction = {
+      ...refraction,
+      header: refraction.header?.trim() || syncName,
+    };
     const toSave = {
       ...settings,
-      refraction: {
-        ...refraction,
-        header: refraction.header?.trim() || syncName,
-      },
-      ticket: {
-        ...ticket,
-        header: ticket.header?.trim() || syncName,
-      },
+      refraction: syncedRefraction,
+      ticket: syncedTicket,
       invoice: {
         ...invoice,
         header: invoice.header?.trim() || 'HÓA ĐƠN BÁN LẺ',
@@ -198,7 +194,7 @@ export const Settings: React.FC = () => {
     };
     db.saveSettings(toSave);
     setSettings(toSave);
-    alert('Đã lưu cài đặt thành công! Tên phòng khám sẽ hiển thị đồng nhất khi in phiếu/hóa đơn.');
+    alert('Đã lưu cài đặt thành công! Tên phòng khám sẽ hiển thị đồng nhất khi in phiếu chờ, phiếu khúc xạ và hóa đơn.');
   };
 
   const handleBackup = async () => {
@@ -300,7 +296,7 @@ export const Settings: React.FC = () => {
       if (result.success && result.data) {
         // Import data từ server
         const dataString = JSON.stringify(result.data);
-        if (db.importData(dataString)) {
+        if (await db.importDataAndWait(dataString)) {
           alert(`✅ Khôi phục dữ liệu thành công từ:\n${record.filename}\n\nTrang sẽ tải lại.`);
           window.location.reload();
         } else {
@@ -342,9 +338,9 @@ export const Settings: React.FC = () => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
-      if (db.importData(content)) {
+      if (await db.importDataAndWait(content)) {
         alert('Khôi phục dữ liệu thành công! Trang sẽ tải lại.');
         window.location.reload();
       } else {
@@ -359,8 +355,6 @@ export const Settings: React.FC = () => {
   const tabs = [
     { id: 'general' as const, label: 'Thông tin chung', icon: SettingsIcon },
     { id: 'vat' as const, label: 'Thuế VAT', icon: Receipt },
-    { id: 'invoice' as const, label: 'Hóa đơn', icon: FileText },
-    { id: 'ticket' as const, label: 'Phiếu STT', icon: Ticket },
     { id: 'refraction' as const, label: 'Phiếu khúc xạ', icon: Glasses },
     { id: 'backup' as const, label: 'Sao lưu', icon: Database },
     { id: 'security' as const, label: 'Bảo mật & Admin', icon: Lock },
@@ -468,6 +462,124 @@ export const Settings: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* Tùy chỉnh nội dung phiếu in */}
+            <div className="border-t pt-5">
+              <h3 className="text-base font-bold text-gray-800 mb-4">Tùy chỉnh nội dung phiếu in</h3>
+
+              {/* Hóa đơn */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                  <FileText size={15} /> Hóa đơn bán hàng
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề hóa đơn</label>
+                    <input
+                      value={settings.invoice?.header || ''}
+                      onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, header: e.target.value } })}
+                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
+                      placeholder="HÓA ĐƠN BÁN LẺ"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dòng chân hóa đơn</label>
+                    <input
+                      value={settings.invoice?.footer || ''}
+                      onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, footer: e.target.value } })}
+                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
+                      placeholder="Cảm ơn quý khách!"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Phiếu STT */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                  <Ticket size={15} /> Phiếu số thứ tự
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tên trên phiếu STT</label>
+                    <input
+                      value={settings.ticket?.header || ''}
+                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, header: e.target.value } })}
+                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
+                      placeholder={settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}
+                    />
+                    <p className="text-xs text-gray-400 mt-0.5">Để trống = dùng tên phòng khám ở trên</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dòng phụ trên phiếu STT</label>
+                    <input
+                      value={settings.ticket?.subHeader || ''}
+                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, subHeader: e.target.value } })}
+                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
+                      placeholder={settings.doctorName || 'Tên bác sĩ'}
+                    />
+                    <p className="text-xs text-gray-400 mt-0.5">Để trống = dùng tên bác sĩ ở trên</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú phiếu STT</label>
+                    <input
+                      value={settings.ticket?.note || ''}
+                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, note: e.target.value } })}
+                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
+                      placeholder="Khách hàng vui lòng chờ đến STT"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dòng chân phiếu STT</label>
+                    <input
+                      value={settings.ticket?.footer || ''}
+                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, footer: e.target.value } })}
+                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
+                      placeholder="Phiếu có hiệu lực trong ngày"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Xem trước các phiếu in */}
+            <div className="border-t pt-5">
+              <h3 className="text-base font-bold text-gray-800 mb-1">Xem trước phiếu in</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Xem trước sẽ cập nhật theo nội dung bạn nhập ở trên.
+              </p>
+              <div className="flex flex-wrap gap-8 justify-center sm:justify-start">
+                {/* Xem trước hóa đơn */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1.5">
+                    <FileText size={15} /> Hóa đơn (thermal 50mm)
+                  </h4>
+                  <div className="bg-gray-100 p-4 rounded-lg w-[200px] mx-auto text-center text-xs border">
+                    <p className="font-bold uppercase">{settings.name}</p>
+                    <p>{settings.doctorName}</p>
+                    {settings.phone && <p>ĐT: {settings.phone}</p>}
+                    <p className="border-t border-dashed mt-2 pt-2 font-bold">{settings.invoice?.header || 'HÓA ĐƠN BÁN LẺ'}</p>
+                    <p className="text-gray-400 my-2">[Nội dung hóa đơn]</p>
+                    <p className="border-t border-dashed pt-2 italic">{settings.invoice?.footer || 'Cảm ơn quý khách!'}</p>
+                  </div>
+                </div>
+
+                {/* Xem trước phiếu STT */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1.5">
+                    <Ticket size={15} /> Phiếu số thứ tự (57mm x 50mm)
+                  </h4>
+                  <div className="bg-gray-100 p-4 rounded-lg w-[200px] mx-auto text-center text-xs border">
+                    <p className="font-bold uppercase">{settings.name}</p>
+                    <p>{settings.doctorName}</p>
+                    <p className="text-4xl font-bold border-y border-black my-2 py-2">101</p>
+                    <p className="font-medium">Nguyễn Văn A</p>
+                    <p className="text-gray-500">{settings.ticket?.note || 'Khách hàng vui lòng chờ đến STT'}</p>
+                    <p className="text-gray-400">{settings.ticket?.footer || 'Phiếu có hiệu lực trong ngày'} DD/MM/YYYY</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -503,128 +615,63 @@ export const Settings: React.FC = () => {
           </div>
         )}
 
-        {/* Invoice Settings */}
-        {activeTab === 'invoice' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Tùy Chỉnh Hóa Đơn (Thermal 50mm)</h2>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề hóa đơn</label>
-                <input
-                  value={settings.invoice?.header || ''}
-                  onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, header: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                  placeholder="HÓA ĐƠN BÁN LẺ"
-                />
-              </div>
-              <div>
-                <label className="flex items-center gap-2 mt-6">
-                  <input
-                    type="checkbox"
-                    checked={settings.invoice?.showLogo || false}
-                    onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, showLogo: e.target.checked } })}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">Hiển thị logo</span>
-                </label>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Chân trang (Lời cảm ơn)</label>
-                <textarea
-                  value={settings.invoice?.footer || ''}
-                  onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, footer: e.target.value } })}
-                  className="w-full border rounded-lg p-3 h-24"
-                  placeholder="Cảm ơn quý khách!"
-                />
-              </div>
-            </div>
-            {/* Preview */}
-            <div className="border-t pt-4">
-              <h4 className="text-sm font-medium text-gray-600 mb-2">Xem trước:</h4>
-              <div className="bg-gray-100 p-4 rounded-lg max-w-[200px] mx-auto text-center text-xs">
-                <p className="font-bold">{settings.name}</p>
-                <p>{settings.doctorName}</p>
-                <p className="border-t border-dashed mt-2 pt-2 font-bold">{settings.invoice?.header}</p>
-                <p className="text-gray-400 my-2">[Nội dung hóa đơn]</p>
-                <p className="border-t border-dashed pt-2">{settings.invoice?.footer}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Ticket Settings */}
-        {activeTab === 'ticket' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Tùy Chỉnh Phiếu Số Thứ Tự (57mm x 50mm)</h2>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề chính</label>
-                <input
-                  value={settings.ticket?.header || ''}
-                  onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, header: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề phụ (Tên BS)</label>
-                <input
-                  value={settings.ticket?.subHeader || ''}
-                  onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, subHeader: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú</label>
-                <input
-                  value={settings.ticket?.note || ''}
-                  onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, note: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Chân trang</label>
-                <input
-                  value={settings.ticket?.footer || ''}
-                  onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, footer: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-            </div>
-            {/* Preview */}
-            <div className="border-t pt-4">
-              <h4 className="text-sm font-medium text-gray-600 mb-2">Xem trước:</h4>
-              <div className="bg-gray-100 p-4 rounded-lg max-w-[200px] mx-auto text-center text-xs border">
-                <p className="font-bold uppercase">{settings.ticket?.header}</p>
-                <p>{settings.ticket?.subHeader}</p>
-                <p className="text-4xl font-bold border-y border-black my-2 py-2">101</p>
-                <p className="font-medium">Nguyen Van A</p>
-                <p className="text-gray-500">{settings.ticket?.note}</p>
-                <p className="text-gray-400">{settings.ticket?.footer} DD/MM/YYYY</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Refraction Settings */}
         {activeTab === 'refraction' && (
           <div className="space-y-6">
             <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Tùy Chỉnh Phiếu Khúc Xạ (A5)</h2>
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Dòng phụ in bên trái (để trống = tên phòng khám)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tên phiếu (tiêu đề chính giữa)</label>
                 <input
-                  value={settings.refraction?.header || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, header: e.target.value } })}
+                  value={settings.refraction?.title || ''}
+                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, title: e.target.value } })}
                   className="w-full border rounded-lg p-3"
-                  placeholder={settings.name || 'Tên phòng khám'}
+                  placeholder="PHIẾU KHÚC XẠ"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề phải</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề góc phải (VD: KHÁM KHÚC XẠ)</label>
                 <input
                   value={settings.refraction?.rightHeader || ''}
                   onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, rightHeader: e.target.value } })}
                   className="w-full border rounded-lg p-3"
+                  placeholder="KHÁM KHÚC XẠ"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Giờ làm việc (in góc phải, in nghiêng)</label>
+                <input
+                  value={settings.workingHours || ''}
+                  onChange={e => setSettings({ ...settings, workingHours: e.target.value })}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="Từ 8h đến 19h, Thứ hai đến Chủ nhật"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nhãn chữ ký khách hàng</label>
+                <input
+                  value={settings.refraction?.sigLabel1 || ''}
+                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigLabel1: e.target.value } })}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="Xác nhận của khách hàng"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nhãn chữ ký người thực hiện</label>
+                <input
+                  value={settings.refraction?.sigLabel2 || ''}
+                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigLabel2: e.target.value } })}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="Người thực hiện"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Chú thích dưới chữ ký</label>
+                <input
+                  value={settings.refraction?.sigSubText || ''}
+                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigSubText: e.target.value } })}
+                  className="w-full border rounded-lg p-3"
+                  placeholder="(Ký và ghi rõ họ tên)"
                 />
               </div>
               <div className="col-span-2">
@@ -644,6 +691,7 @@ export const Settings: React.FC = () => {
                 />
               </div>
             </div>
+            <p className="text-sm text-gray-500">Tên phòng khám và bác sĩ lấy từ tab Thông tin chung (góc trái phiếu in).</p>
           </div>
         )}
 

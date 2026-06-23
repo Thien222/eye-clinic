@@ -1,5 +1,24 @@
 import type { InventoryItem } from '../types';
 
+/**
+ * Đọc thông báo bằng giọng nói — an toàn tuyệt đối.
+ * Mọi lỗi (iOS Safari, webview không hỗ trợ, bị chặn...) đều được nuốt
+ * để KHÔNG bao giờ làm gián đoạn luồng cập nhật trạng thái bệnh nhân.
+ */
+export function speak(text: string): void {
+    try {
+        const synth = (typeof window !== 'undefined' && window.speechSynthesis) || null;
+        if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
+        // iOS đôi khi "kẹt" hàng đợi — hủy trước rồi nói lại
+        try { synth.cancel(); } catch { /* ignore */ }
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'vi-VN';
+        synth.speak(utterance);
+    } catch {
+        /* Không hỗ trợ / bị chặn — bỏ qua, không ảnh hưởng nghiệp vụ */
+    }
+}
+
 /** Local date as YYYY-MM-DD (avoids UTC timezone bugs) */
 export function getLocalDateString(date: Date | number = new Date()): string {
     const d = typeof date === 'number' ? new Date(date) : date;
