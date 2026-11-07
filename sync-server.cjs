@@ -12,6 +12,9 @@ const {
     mergeInvoices,
     sanitizeData
 } = require('./sync-helpers.cjs');
+const { scheduleExcelExport } = require('./excel-writer.cjs');
+// Thư mục chứa file Excel hóa đơn (gọng riêng, tròng riêng) — tự cập nhật mỗi khi có hóa đơn
+const EXCEL_DIR = path.join(__dirname, 'excel');
 
 const app = express();
 const server = http.createServer(app);
@@ -105,6 +108,7 @@ function persistAndBroadcast(_sourceSocket) {
 function saveDataSync(data) {
     try {
         fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+        scheduleExcelExport(() => clinicData, EXCEL_DIR);
         return true;
     } catch (e) {
         console.error('Error saving data:', e);
@@ -206,6 +210,8 @@ if (clinicData.patients.length !== (rawLoaded.patients || []).length) {
     saveDataSync(clinicData);
     console.log('[Sync] Đã dọn BN đã xóa khỏi database.json');
 }
+// Tạo/cập nhật file Excel hóa đơn ngay khi khởi động
+scheduleExcelExport(() => clinicData, EXCEL_DIR);
 
 // Auto backup every 4 hours
 const BACKUP_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
@@ -237,6 +243,20 @@ app.post('/api/sync/delete-patient/:id', (req, res) => {
     clinicData.patients = (clinicData.patients || []).filter(p => p.id !== patientId);
     persistAndBroadcast(null);
     console.log(`[Sync] ✓ Deleted patient ${patientId}, tombstones: ${clinicData.syncMeta.deletedPatientIds.length}`);
+    res.json({ success: true, syncMeta: clinicData.syncMeta });
+});
+
+// Xóa hóa đơn — ghi tombstone để máy khác không đồng bộ ngược lại
+app.post('/api/sync/delete-invoice/:id', (req, res) => {
+    const invoiceId = req.params.id;
+    if (!invoiceId) return res.status(400).json({ success: false });
+    const ids = clinicData.syncMeta.deletedInvoiceIds || [];
+    if (!ids.includes(invoiceId)) {
+        clinicData.syncMeta.deletedInvoiceIds = [...ids, invoiceId].slice(-5000);
+    }
+    clinicData.invoices = (clinicData.invoices || []).filter(i => i.id !== invoiceId);
+    persistAndBroadcast(null);
+    console.log('[Sync] ✓ Deleted invoice ' + invoiceId);
     res.json({ success: true, syncMeta: clinicData.syncMeta });
 });
 

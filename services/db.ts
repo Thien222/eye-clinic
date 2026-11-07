@@ -124,6 +124,9 @@ class DatabaseService {
             this.runEndOfDayCleanup();
             this._initialized = true;
             console.log('[DB] IndexedDB initialized successfully');
+            // Báo giao diện vẽ lại bằng dữ liệu đã có trong máy — nếu snapshot server
+            // trùng dữ liệu local (bị bỏ qua) thì trước đây màn hình có thể trống khi F5.
+            this.notifyUpdate();
 
             // Connect to Socket.io for real-time sync
             this.connectSocket();
@@ -357,7 +360,8 @@ class DatabaseService {
     }
 
     private mergeInvoicesLocal(local: Invoice[], remote: Invoice[]): Invoice[] {
-        const merged = mergeInvoices(local, remote);
+        const deleted = new Set(this._syncMeta.deletedInvoiceIds || []);
+        const merged = mergeInvoices(local, remote).filter(i => !deleted.has(i.id));
         return this.applyEditGuards(merged, this._invoicesCache, 'invoice');
     }
 
@@ -387,10 +391,11 @@ class DatabaseService {
             // Determine socket URL based on current location
             const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
             const host = window.location.hostname;
-            const port = window.location.port || '3001';
-
-            // Always connect to port 3001 (sync server)
-            const socketUrl = `${protocol}//${host}:3001`;
+            // Trang do sync-server phục vụ → socket cùng cổng với trang.
+            // Riêng môi trường dev (Vite cổng 3000) → sync server cổng 3001.
+            const pagePort = window.location.port;
+            const port = !pagePort || pagePort === '3000' ? '3001' : pagePort;
+            const socketUrl = `${protocol}//${host}:${port}`;
             console.log('[Socket] Connecting to:', socketUrl);
 
             // Socket.io client từ server local (không phụ thuộc CDN — nhanh hơn trên LAN)
@@ -497,7 +502,8 @@ class DatabaseService {
             if (!res.ok) return;
             const server = sanitizeIncomingData(await res.json());
             const localNewer = (this._syncMeta.lastUpdated || 0) > (server.syncMeta?.lastUpdated || 0)
-                || (this._syncMeta.deletedPatientIds?.length || 0) > (server.syncMeta?.deletedPatientIds?.length || 0);
+                || (this._syncMeta.deletedPatientIds?.length || 0) > (server.syncMeta?.deletedPatientIds?.length || 0)
+                || (this._syncMeta.deletedInvoiceIds?.length || 0) > (server.syncMeta?.deletedInvoiceIds?.length || 0);
             if (localNewer) {
                 console.log('[DB] Local newer than server — pushing before accept');
                 await this.pushToServer();
@@ -783,9 +789,10 @@ class DatabaseService {
             }
 
             if (data.invoices && !isStaleSnapshot) {
-                const merged = (fromSocket && !forceReplace)
+                const deletedInv = new Set(this._syncMeta.deletedInvoiceIds || []);
+                const merged = ((fromSocket && !forceReplace)
                     ? this.mergeInvoicesLocal(this._invoicesCache, data.invoices)
-                    : data.invoices;
+                    : data.invoices).filter((i: Invoice) => !deletedInv.has(i.id));
                 await this.dexieDb.invoices.clear();
                 if (merged.length > 0) await this.dexieDb.invoices.bulkAdd(merged);
                 this._invoicesCache = merged;
@@ -993,8 +1000,34 @@ class DatabaseService {
     }
 
     deleteInvoice(id: string): void {
+        // Ghi tombstone để hóa đơn không bị đồng bộ ngược lại từ máy khác
+        const ids = this._syncMeta.deletedInvoiceIds || [];
+        if (!ids.includes(id)) {
+            this._syncMeta.deletedInvoiceIds = [...ids, id].slice(-5000);
+            this.saveSyncMeta();
+        }
         this._invoicesCache = this._invoicesCache.filter(i => i.id !== id);
         this.afterLocalMutation([{ scope: 'invoice', id }], this.dexieDb.invoices.delete(id));
+        void this.syncDeleteInvoice(id).then(() => this.emitUpdate());
+    }
+
+    /** Xóa hóa đơn — gọi API server, retry 3 lần */
+    private async syncDeleteInvoice(id: string): Promise<boolean> {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const res = await fetch(`/api/sync/delete-invoice/${encodeURIComponent(id)}`, { method: 'POST' });
+                if (res.ok) {
+                    const result = await res.json();
+                    if (result.syncMeta) {
+                        this._syncMeta = mergeSyncMeta(this._syncMeta, result.syncMeta);
+                        this.saveSyncMeta();
+                    }
+                    return true;
+                }
+            } catch { /* retry */ }
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        }
+        return false;
     }
 }
 

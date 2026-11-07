@@ -8,30 +8,26 @@ interface StatCardProps {
   value: number | string;
   icon: LucideIcon;
   accent?: Accent;
+  sub?: string;
 }
 
-const accentMap: Record<Accent, { icon: string; bar: string; glow: string }> = {
-  teal: { icon: 'text-brand-600 bg-brand-50', bar: 'bg-brand-500', glow: 'from-brand-50/70' },
-  emerald: { icon: 'text-emerald-600 bg-emerald-50', bar: 'bg-emerald-500', glow: 'from-emerald-50/70' },
-  sky: { icon: 'text-sky-600 bg-sky-50', bar: 'bg-sky-500', glow: 'from-sky-50/70' },
-  amber: { icon: 'text-amber-600 bg-amber-50', bar: 'bg-amber-500', glow: 'from-amber-50/70' },
+const accentMap: Record<Accent, string> = {
+  teal: 'text-brand-600 bg-brand-50 ring-brand-100',
+  emerald: 'text-emerald-600 bg-emerald-50 ring-emerald-100',
+  sky: 'text-sky-600 bg-sky-50 ring-sky-100',
+  amber: 'text-amber-600 bg-amber-50 ring-amber-100',
 };
 
-export const StatCard: React.FC<StatCardProps> = ({ label, value, icon: Icon, accent = 'teal' }) => {
-  const colors = accentMap[accent];
-  return (
-    <div className="clinic-card clinic-card-interactive p-5 relative overflow-hidden group">
-      <div className={`absolute left-0 top-0 bottom-0 w-1 ${colors.bar} rounded-l-xl`} />
-      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${colors.glow} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-      <div className="relative flex justify-between items-start pl-2">
-        <div>
-          <p className="text-sm font-semibold text-slate-600">{label}</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">{value}</p>
-        </div>
-        <div className={`p-2.5 rounded-xl ${colors.icon} transition-transform duration-200 group-hover:scale-110`}>
-          <Icon size={22} strokeWidth={2} aria-hidden />
-        </div>
-      </div>
+/** Ô số liệu — cùng chiều cao, icon trái, số lớn */
+export const StatCard: React.FC<StatCardProps> = ({ label, value, icon: Icon, accent = 'teal', sub }) => (
+  <div className="clinic-card p-5 flex items-start gap-4 h-full">
+    <div className={`w-11 h-11 shrink-0 rounded-xl ring-1 ring-inset flex items-center justify-center ${accentMap[accent]}`}>
+      <Icon size={22} strokeWidth={2} aria-hidden />
     </div>
-  );
-};
+    <div className="min-w-0">
+      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <p className="text-2xl font-bold text-slate-900 mt-0.5 tabular-nums truncate">{value}</p>
+      {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+    </div>
+  </div>
+);

@@ -3,7 +3,8 @@ import { Patient, InventoryItem, Invoice, SyncMeta } from '../types';
 export const DEFAULT_SYNC_META: SyncMeta = {
     version: 0,
     lastUpdated: 0,
-    deletedPatientIds: []
+    deletedPatientIds: [],
+    deletedInvoiceIds: []
 };
 
 export function mergeSyncMeta(local?: SyncMeta, remote?: SyncMeta): SyncMeta {
@@ -15,17 +16,23 @@ export function mergeSyncMeta(local?: SyncMeta, remote?: SyncMeta): SyncMeta {
         deletedPatientIds: Array.from(new Set([
             ...(l.deletedPatientIds || []),
             ...(r.deletedPatientIds || [])
+        ])).slice(-5000),
+        deletedInvoiceIds: Array.from(new Set([
+            ...(l.deletedInvoiceIds || []),
+            ...(r.deletedInvoiceIds || [])
         ])).slice(-5000)
     };
 }
 
-/** Loại BN đã xóa khỏi mọi snapshot trước khi lưu/gửi */
-export function applyTombstones<T extends { patients?: Patient[]; syncMeta?: SyncMeta }>(data: T): T {
+/** Loại BN và hóa đơn đã xóa khỏi mọi snapshot trước khi lưu/gửi */
+export function applyTombstones<T extends { patients?: Patient[]; invoices?: Invoice[]; syncMeta?: SyncMeta }>(data: T): T {
     const deleted = new Set(data.syncMeta?.deletedPatientIds || []);
-    if (deleted.size === 0) return data;
+    const deletedInv = new Set(data.syncMeta?.deletedInvoiceIds || []);
+    if (deleted.size === 0 && deletedInv.size === 0) return data;
     return {
         ...data,
-        patients: (data.patients || []).filter(p => !deleted.has(p.id))
+        patients: data.patients ? data.patients.filter(p => !deleted.has(p.id)) : data.patients,
+        invoices: data.invoices ? data.invoices.filter(i => !deletedInv.has(i.id)) : data.invoices,
     };
 }
 

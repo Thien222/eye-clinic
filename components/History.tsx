@@ -2,14 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
 import { getLocalDateString } from '../services/utils';
 import { Patient } from '../types';
-import { Search, Eye, FileText, Calendar, Glasses, Printer, ChevronLeft, ChevronRight } from 'lucide-react';
-import { PageHeader } from './ui/PageHeader';
-import { Button } from './ui/Button';
-import { SearchInput } from './ui/SearchInput';
+import { Search, Eye, FileText, Calendar, Glasses, Printer, ChevronLeft, ChevronRight, ClipboardList, UserRound } from 'lucide-react';
+import { PageHeader, Button, IconButton, Badge, Modal, Tabs, Segmented, EmptyState, SearchInput, Pagination } from './ui';
+import type { TabItem } from './ui';
 import { RefractionPrintSheet } from './RefractionPrintSheet';
 import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 
-const ITEMS_PER_PAGE = 25;
+const ITEMS_PER_PAGE = 15;
 
 export const History: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -74,103 +73,85 @@ export const History: React.FC = () => {
 
   const today = new Date();
 
+  const periodItems: TabItem<'all' | 'day' | 'week' | 'month'>[] = [
+    { value: 'day', label: 'Hôm nay' },
+    { value: 'week', label: '7 ngày' },
+    { value: 'month', label: 'Tháng này' },
+    { value: 'all', label: 'Tất cả' },
+  ];
+
+  const tabItems: TabItem<'refraction' | 'all'>[] = [
+    { value: 'refraction', label: 'Lịch sử Khúc xạ', icon: Glasses },
+    { value: 'all', label: 'Tất cả bệnh nhân', icon: FileText },
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    // Màn rộng (lg+): trang vừa khung (không cuộn ngoài), chỉ bảng cuộn bên trong
+    <div className="page-fill max-w-7xl mx-auto w-full flex flex-col">
       <PageHeader
         title="Lịch sử khám"
         subtitle={`${filtered.length} bệnh nhân`}
+        icon={ClipboardList}
         actions={
-          <>
-            <select className="clinic-input w-auto text-sm" value={periodFilter} onChange={e => setPeriodFilter(e.target.value as any)}>
-              <option value="day">Hôm nay</option>
-              <option value="week">7 ngày</option>
-              <option value="month">Tháng này</option>
-              <option value="all">Tất cả</option>
-            </select>
-            <Button size="sm" icon={Printer} onClick={handlePrintList}>In bảng</Button>
-          </>
+          <Button variant="outline" icon={Printer} onClick={handlePrintList}>In bảng</Button>
         }
       />
 
-      {/* Tabs */}
-      <div className="clinic-card">
-        <div className="flex border-b">
-          <button
-            onClick={() => setActiveTab('refraction')}
-            className={`flex-1 py-3 text-sm font-bold flex justify-center items-center gap-2 ${activeTab === 'refraction'
-              ? 'bg-brand-50 text-brand-600 border-b-2 border-brand-600'
-              : 'text-gray-500 hover:bg-gray-50'
-              }`}
-          >
-            <Glasses size={16} /> Lịch sử Khúc xạ
-          </button>
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`flex-1 py-3 text-sm font-bold flex justify-center items-center gap-2 ${activeTab === 'all'
-              ? 'bg-green-50 text-green-600 border-b-2 border-green-600'
-              : 'text-gray-500 hover:bg-gray-50'
-              }`}
-          >
-            <FileText size={16} /> Tất cả bệnh nhân
-          </button>
-        </div>
+      <div className="clinic-card fill-y flex flex-col">
+        {/* Tabs */}
+        <Tabs items={tabItems} value={activeTab} onChange={setActiveTab} className="px-5 pt-2 shrink-0" />
 
-        <div className="p-6">
-          {/* Search */}
-          <SearchInput
-            placeholder="Tìm kiếm theo tên hoặc số điện thoại..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="p-5 flex flex-col gap-4 fill-y">
+          {/* Bộ lọc */}
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3 shrink-0">
+            <SearchInput
+              containerClassName="flex-1 min-w-0"
+              placeholder="Tìm kiếm theo tên hoặc số điện thoại..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <Segmented items={periodItems} value={periodFilter} onChange={setPeriodFilter} />
+          </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 text-gray-600">
-                <tr>
-                  <th className="p-3">Ngày</th>
-                  <th className="p-3">STT</th>
-                  <th className="p-3">Họ Tên</th>
-                  <th className="p-3">Năm sinh</th>
-                  <th className="p-3">SĐT</th>
-                  {activeTab === 'refraction' && <th className="p-3">Kính điều chỉnh</th>}
-                  <th className="p-3">Thao tác</th>
+          {/* Bảng */}
+          <div className="table-wrap overflow-y-auto fill-y">
+            <table className="clinic-table">
+              <thead className="sticky top-0 z-10">
+                <tr className="[&>th]:bg-slate-50">
+                  <th>Ngày</th>
+                  <th>STT</th>
+                  <th>Họ Tên</th>
+                  <th className="hidden xl:table-cell">Năm sinh</th>
+                  <th>SĐT</th>
+                  {activeTab === 'refraction' && <th>Kính điều chỉnh</th>}
+                  <th className="text-right w-px whitespace-nowrap">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody>
                 {paginated.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="p-3 text-sm">{new Date(p.timestamp).toLocaleDateString('vi-VN')}</td>
-                    <td className="p-3 font-bold text-brand-600">{p.ticketNumber}</td>
-                    <td className="p-3 font-medium">{p.fullName}</td>
-                    <td className="p-3">{p.dob}</td>
-                    <td className="p-3">{p.phone}</td>
+                  <tr key={p.id}>
+                    <td className="tabular-nums whitespace-nowrap">{new Date(p.timestamp).toLocaleDateString('vi-VN')}</td>
+                    <td className="font-bold text-brand-600 tabular-nums">{p.ticketNumber}</td>
+                    <td className="font-medium text-slate-900 whitespace-nowrap">{p.fullName}</td>
+                    <td className="tabular-nums hidden xl:table-cell">{p.dob}</td>
+                    <td className="tabular-nums whitespace-nowrap">{p.phone}</td>
                     {activeTab === 'refraction' && (
-                      <td className="p-3 text-xs">
+                      <td className="text-xs tabular-nums whitespace-nowrap">
                         {p.refraction && (
-                          <div>
-                            <span>OD: {p.refraction.finalRx.od.sph}/{p.refraction.finalRx.od.cyl}</span>
-                            <span className="ml-2">OS: {p.refraction.finalRx.os.sph}/{p.refraction.finalRx.os.cyl}</span>
+                          <div className="flex flex-wrap gap-x-3">
+                            <span><span className="font-semibold text-slate-500">OD:</span> {p.refraction.finalRx.od.sph}/{p.refraction.finalRx.od.cyl}</span>
+                            <span><span className="font-semibold text-slate-500">OS:</span> {p.refraction.finalRx.os.sph}/{p.refraction.finalRx.os.cyl}</span>
                           </div>
                         )}
                       </td>
                     )}
-                    <td className="p-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setSelectedPatient(p)}
-                          className="text-brand-600 hover:bg-brand-50 p-2 rounded flex items-center gap-1 text-sm font-medium"
-                        >
-                          <Eye size={16} /> Xem
-                        </button>
+                    <td className="w-px whitespace-nowrap">
+                      <div className="flex justify-end items-center gap-1">
+                        <Button variant="ghost" size="sm" icon={Eye} onClick={() => setSelectedPatient(p)} className="!text-brand-600 hover:!text-brand-700 hover:!bg-brand-50">
+                          Xem
+                        </Button>
                         {p.refraction && (
-                          <button
-                            onClick={() => handlePrintRefraction(p)}
-                            className="text-gray-600 hover:bg-gray-100 p-2 rounded flex items-center gap-1 text-sm"
-                            title="In phiếu khúc xạ"
-                          >
-                            <Printer size={16} />
-                          </button>
+                          <IconButton icon={Printer} label="In phiếu khúc xạ" size="sm" onClick={() => handlePrintRefraction(p)} />
                         )}
                       </div>
                     </td>
@@ -178,8 +159,11 @@ export const History: React.FC = () => {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={activeTab === 'refraction' ? 7 : 6} className="p-8 text-center text-gray-500">
-                      {searchTerm ? 'Không tìm thấy bệnh nhân phù hợp' : 'Chưa có dữ liệu lịch sử'}
+                    <td colSpan={activeTab === 'refraction' ? 7 : 6}>
+                      <EmptyState
+                        icon={searchTerm ? Search : ClipboardList}
+                        title={searchTerm ? 'Không tìm thấy bệnh nhân phù hợp' : 'Chưa có dữ liệu lịch sử'}
+                      />
                     </td>
                   </tr>
                 )}
@@ -187,74 +171,83 @@ export const History: React.FC = () => {
             </table>
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-4 mt-4">
-              <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}
-                className="p-2 rounded border disabled:opacity-30 hover:bg-gray-50"><ChevronLeft size={20} /></button>
-              <span className="text-sm">Trang {currentPage}/{totalPages}</span>
-              <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}
-                className="p-2 rounded border disabled:opacity-30 hover:bg-gray-50"><ChevronRight size={20} /></button>
-            </div>
-          )}
+          <Pagination
+            className="shrink-0"
+            page={Math.min(currentPage, Math.max(1, totalPages))}
+            pageSize={ITEMS_PER_PAGE}
+            total={filtered.length}
+            onChange={setCurrentPage}
+          />
         </div>
       </div>
 
       {/* Patient Detail Modal */}
-      {selectedPatient && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b flex justify-between items-start bg-brand-50">
-              <div>
-                <h3 className="text-2xl font-bold text-brand-800">{selectedPatient.fullName}</h3>
-                <div className="flex gap-4 text-sm text-gray-600 mt-1">
-                  <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(selectedPatient.timestamp).toLocaleDateString('vi-VN')}</span>
-                  <span>{selectedPatient.gender} - {selectedPatient.dob}</span>
-                  <span>{selectedPatient.phone}</span>
+      <Modal
+        open={!!selectedPatient}
+        onClose={() => setSelectedPatient(null)}
+        size="xl"
+        icon={<UserRound size={20} aria-hidden />}
+        title={selectedPatient?.fullName ?? ''}
+        subtitle={selectedPatient && (
+          <span className="flex flex-wrap gap-x-4 gap-y-0.5 mt-0.5">
+            <span className="inline-flex items-center gap-1"><Calendar size={14} aria-hidden /> {new Date(selectedPatient.timestamp).toLocaleDateString('vi-VN')}</span>
+            <span>{selectedPatient.gender} - {selectedPatient.dob}</span>
+            <span>{selectedPatient.phone}</span>
+            <span className="basis-full">Địa chỉ: {selectedPatient.address}</span>
+          </span>
+        )}
+        footer={selectedPatient && (
+          <>
+            <Button variant="outline" onClick={() => setSelectedPatient(null)}>Đóng</Button>
+            {selectedPatient.refraction && (
+              <Button icon={Printer} onClick={() => handlePrintRefraction(selectedPatient)}>
+                In Phiếu Khúc Xạ
+              </Button>
+            )}
+          </>
+        )}
+      >
+        {selectedPatient && (
+          <div className="space-y-6">
+            {/* Thông tin ban đầu */}
+            <div className="subtle-panel p-4">
+              <h4 className="section-title mb-3"><Eye size={18} aria-hidden /> Thông tin ban đầu</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-700">
+                <div className="space-y-1">
+                  <p><strong className="text-slate-900">Thị lực (UCVA):</strong> OD {selectedPatient.initialVA?.od || '-'} / OS {selectedPatient.initialVA?.os || '-'}</p>
+                  <p><strong className="text-slate-900">Có kính:</strong> {selectedPatient.hasGlasses ? 'Có' : 'Không'}</p>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">Địa chỉ: {selectedPatient.address}</p>
+                <div className="space-y-1">
+                  <p><strong className="text-slate-900">Lý do khám:</strong> {selectedPatient.reason || '-'}</p>
+                  <p><strong className="text-slate-900">Ghi chú:</strong> {selectedPatient.notes || '-'}</p>
+                </div>
               </div>
-              <button onClick={() => setSelectedPatient(null)} className="text-gray-500 hover:text-red-500 text-2xl">&times;</button>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* Thông tin ban đầu */}
-              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-bold text-yellow-800 mb-2">Thông tin ban đầu</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p><strong>Thị lực (UCVA):</strong> OD {selectedPatient.initialVA?.od || '-'} / OS {selectedPatient.initialVA?.os || '-'}</p>
-                    <p><strong>Có kính:</strong> {selectedPatient.hasGlasses ? 'Có' : 'Không'}</p>
-                  </div>
-                  <div>
-                    <p><strong>Lý do khám:</strong> {selectedPatient.reason || '-'}</p>
-                    <p><strong>Ghi chú:</strong> {selectedPatient.notes || '-'}</p>
-                  </div>
+            {/* Refraction Data */}
+            {selectedPatient.refraction && (
+              <div className="rounded-xl border border-slate-200">
+                <div className="card-header">
+                  <h4 className="section-title"><Glasses size={18} aria-hidden /> Kết quả Khúc Xạ</h4>
                 </div>
-              </div>
 
-              {/* Refraction Data */}
-              {selectedPatient.refraction && (
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-bold text-gray-700 border-b pb-2 mb-3 flex items-center gap-2">
-                    <Glasses size={18} /> Kết quả Khúc Xạ
-                  </h4>
-
+                <div className="p-5 space-y-4">
                   {/* Skiascopy */}
-                  <div className="mb-4">
-                    <p className="font-medium text-sm text-gray-600 mb-2">
+                  <div>
+                    <p className="clinic-label flex flex-wrap items-center gap-2">
                       Khúc xạ khách quan (Skiascopy)
                       {selectedPatient.refraction.skiascopy.cycloplegia &&
-                        <span className="ml-2 text-red-600 text-xs bg-red-50 px-2 py-0.5 rounded">Có liệt điều tiết</span>
+                        <Badge tone="danger">Có liệt điều tiết</Badge>
                       }
                     </p>
-                    <div className="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-3 rounded">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-700 subtle-panel p-3 tabular-nums">
                       <div>
-                        <strong>OD:</strong> SPH {selectedPatient.refraction.skiascopy.od.sph || '-'} |
+                        <strong className="text-slate-900">OD:</strong> SPH {selectedPatient.refraction.skiascopy.od.sph || '-'} |
                         CYL {selectedPatient.refraction.skiascopy.od.cyl || '-'} |
                         AXIS {selectedPatient.refraction.skiascopy.od.axis || '-'}
                       </div>
                       <div>
-                        <strong>OS:</strong> SPH {selectedPatient.refraction.skiascopy.os.sph || '-'} |
+                        <strong className="text-slate-900">OS:</strong> SPH {selectedPatient.refraction.skiascopy.os.sph || '-'} |
                         CYL {selectedPatient.refraction.skiascopy.os.cyl || '-'} |
                         AXIS {selectedPatient.refraction.skiascopy.os.axis || '-'}
                       </div>
@@ -262,17 +255,17 @@ export const History: React.FC = () => {
                   </div>
 
                   {/* Subjective */}
-                  <div className="mb-4">
-                    <p className="font-medium text-sm text-gray-600 mb-2">Khúc xạ chủ quan (Subj. Refraction)</p>
-                    <div className="grid grid-cols-2 gap-4 text-sm bg-blue-50 p-3 rounded">
+                  <div>
+                    <p className="clinic-label">Khúc xạ chủ quan (Subj. Refraction)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-700 subtle-panel p-3 tabular-nums">
                       <div>
-                        <strong>OD:</strong> SPH {selectedPatient.refraction.subjective.od.sph || '-'} |
+                        <strong className="text-slate-900">OD:</strong> SPH {selectedPatient.refraction.subjective.od.sph || '-'} |
                         CYL {selectedPatient.refraction.subjective.od.cyl || '-'} |
                         AXIS {selectedPatient.refraction.subjective.od.axis || '-'} |
                         VA {selectedPatient.refraction.subjective.od.va || '-'}
                       </div>
                       <div>
-                        <strong>OS:</strong> SPH {selectedPatient.refraction.subjective.os.sph || '-'} |
+                        <strong className="text-slate-900">OS:</strong> SPH {selectedPatient.refraction.subjective.os.sph || '-'} |
                         CYL {selectedPatient.refraction.subjective.os.cyl || '-'} |
                         AXIS {selectedPatient.refraction.subjective.os.axis || '-'} |
                         VA {selectedPatient.refraction.subjective.os.va || '-'}
@@ -281,85 +274,77 @@ export const History: React.FC = () => {
                   </div>
 
                   {/* Final Rx */}
-                  <div className="mb-4">
-                    <p className="font-medium text-sm text-gray-600 mb-2">Kính điều chỉnh (Prescription)</p>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="bg-brand-50 p-3 rounded border border-brand-200">
-                        <p className="font-bold mb-1">Mắt Phải (OD)</p>
+                  <div>
+                    <p className="clinic-label">Kính điều chỉnh (Prescription)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-700 tabular-nums">
+                      <div className="bg-brand-50 p-3 rounded-lg border border-brand-200">
+                        <p className="font-semibold text-slate-900 mb-1">Mắt Phải (OD)</p>
                         <p>SPH: {selectedPatient.refraction.finalRx.od.sph} | CYL: {selectedPatient.refraction.finalRx.od.cyl} | AXIS: {selectedPatient.refraction.finalRx.od.axis}</p>
                         <p>Thị lực: {selectedPatient.refraction.finalRx.od.va} | ADD: {selectedPatient.refraction.finalRx.od.add || '-'}</p>
                       </div>
-                      <div className="bg-brand-50 p-3 rounded border border-brand-200">
-                        <p className="font-bold mb-1">Mắt Trái (OS)</p>
+                      <div className="bg-brand-50 p-3 rounded-lg border border-brand-200">
+                        <p className="font-semibold text-slate-900 mb-1">Mắt Trái (OS)</p>
                         <p>SPH: {selectedPatient.refraction.finalRx.os.sph} | CYL: {selectedPatient.refraction.finalRx.os.cyl} | AXIS: {selectedPatient.refraction.finalRx.os.axis}</p>
                         <p>Thị lực: {selectedPatient.refraction.finalRx.os.va} | ADD: {selectedPatient.refraction.finalRx.os.add || '-'}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-sm mt-2 p-2 bg-gray-50 rounded">
-                    <p><strong>Loại kính:</strong> {selectedPatient.refraction.finalRx.lensType}</p>
-                    <p><strong>PD (KCĐT):</strong> {selectedPatient.refraction.finalRx.od.pd || '-'} mm</p>
-                    {selectedPatient.refraction.note && <p><strong>Ghi chú:</strong> {selectedPatient.refraction.note}</p>}
+                  <div className="text-sm text-slate-700 subtle-panel p-3 space-y-1">
+                    <p><strong className="text-slate-900">Loại kính:</strong> {selectedPatient.refraction.finalRx.lensType}</p>
+                    <p><strong className="text-slate-900">PD (KCĐT):</strong> {selectedPatient.refraction.finalRx.od.pd || '-'} mm</p>
+                    {selectedPatient.refraction.note && <p><strong className="text-slate-900">Ghi chú:</strong> {selectedPatient.refraction.note}</p>}
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Medical Record */}
-              {selectedPatient.medical && (
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-bold text-gray-700 border-b pb-2 mb-3 flex items-center gap-2">
-                    <FileText size={18} /> Khám Bệnh & Đơn Thuốc
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+            {/* Medical Record */}
+            {selectedPatient.medical && (
+              <div className="rounded-xl border border-slate-200">
+                <div className="card-header">
+                  <h4 className="section-title"><FileText size={18} aria-hidden /> Khám Bệnh & Đơn Thuốc</h4>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <p className="font-bold text-sm text-gray-500">Triệu chứng</p>
-                      <p>{selectedPatient.medical.symptoms}</p>
+                      <p className="clinic-label">Triệu chứng</p>
+                      <p className="text-sm text-slate-900">{selectedPatient.medical.symptoms}</p>
                     </div>
                     <div>
-                      <p className="font-bold text-sm text-gray-500">Chẩn đoán</p>
-                      <p>{selectedPatient.medical.diagnosis}</p>
+                      <p className="clinic-label">Chẩn đoán</p>
+                      <p className="text-sm text-slate-900">{selectedPatient.medical.diagnosis}</p>
                     </div>
                   </div>
 
                   {selectedPatient.medical.prescriptions.length > 0 && (
-                    <table className="w-full text-sm border">
-                      <thead className="bg-gray-100">
-                        <tr>
-                          <th className="p-2 text-left">Thuốc</th>
-                          <th className="p-2 text-center">SL</th>
-                          <th className="p-2 text-left">Cách dùng</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedPatient.medical.prescriptions.map((m, i) => (
-                          <tr key={i} className="border-t">
-                            <td className="p-2 font-medium">{m.medicineName}</td>
-                            <td className="p-2 text-center">{m.quantity}</td>
-                            <td className="p-2">{m.usage}</td>
+                    <div className="table-wrap">
+                      <table className="clinic-table">
+                        <thead>
+                          <tr>
+                            <th>Thuốc</th>
+                            <th className="num">SL</th>
+                            <th>Cách dùng</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {selectedPatient.medical.prescriptions.map((m, i) => (
+                            <tr key={i}>
+                              <td className="font-medium text-slate-900">{m.medicineName}</td>
+                              <td className="num">{m.quantity}</td>
+                              <td>{m.usage}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-
-            <div className="p-4 bg-gray-50 border-t flex justify-between">
-              {selectedPatient.refraction && (
-                <button
-                  onClick={() => handlePrintRefraction(selectedPatient)}
-                  className="px-4 py-2 bg-brand-600 text-white rounded hover:bg-brand-700 flex items-center gap-2"
-                >
-                  <Printer size={18} /> In Phiếu Khúc Xạ
-                </button>
-              )}
-              <button onClick={() => setSelectedPatient(null)} className="px-4 py-2 bg-gray-200 rounded text-gray-700 hover:bg-gray-300 ml-auto">Đóng</button>
-            </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Print Area for Refraction Sheet */}
       {selectedPatient?.refraction && (
@@ -413,4 +398,3 @@ export const History: React.FC = () => {
   );
 };
 
-const HistoryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /></svg>;

@@ -70,6 +70,8 @@ export interface SyncMeta {
   version: number;
   lastUpdated: number;
   deletedPatientIds: string[];
+  /** Hóa đơn đã xóa — để không bị đồng bộ ngược lại từ máy khác */
+  deletedInvoiceIds?: string[];
 }
 
 export interface InventoryItem {
@@ -93,21 +95,56 @@ export interface InventoryItem {
   image?: string;
 }
 
+/** Thông số tròng cho 1 mắt (nhập tay tại thu ngân) */
+export interface LensRx {
+  sph: string; // Độ cận/viễn
+  cyl: string; // Độ loạn
+  axis: string; // Trục loạn
+  add: string; // Độ ADD (nếu có)
+}
+
+/** Gọng kính nhập tay trên hóa đơn (không qua kho) */
+export interface InvoiceFrame {
+  name: string;
+  code: string;
+  price: number;
+  material: string;
+}
+
+/** Tròng kính nhập tay trên hóa đơn (không qua kho) */
+export interface InvoiceLens {
+  name: string;
+  price: number;
+  index: string; // Chiết suất
+  od: LensRx;
+  os: LensRx;
+}
+
+export interface InvoiceItem {
+  itemId: string;
+  name: string;
+  quantity: number;
+  costPrice: number; // Giá nhập
+  price: number; // Giá bán
+  isLens?: boolean;
+  eye?: 'OD' | 'OS';
+  category?: 'frame' | 'lens' | 'other';
+}
+
 export interface Invoice {
   id: string;
   patientId: string;
   patientName: string;
   patientPhone?: string;
   patientAddress?: string;
-  items: {
-    itemId: string;
-    name: string;
-    quantity: number;
-    costPrice: number; // Giá nhập
-    price: number; // Giá bán
-    isLens?: boolean;
-    eye?: 'OD' | 'OS';
-  }[];
+  customerType?: 'exam' | 'walkin';
+  /** Hóa đơn mới: gọng/tròng nhập trực tiếp (không qua kho) */
+  frame?: InvoiceFrame;
+  lens?: InvoiceLens;
+  /** Gọng / tròng mua thêm (gọng #2, #3...) */
+  extraFrames?: InvoiceFrame[];
+  extraLenses?: InvoiceLens[];
+  items: InvoiceItem[];
   subtotal: number;
   discount: number; // Voucher
   surcharge: number; // Phụ thu

@@ -62,8 +62,8 @@ const S: Record<string, React.CSSProperties> = {
   },
   thEn: { fontWeight: 'normal', fontStyle: 'italic', fontSize: '9px' },
   /* ---- notes ---- */
-  notesBox: { marginBottom: '3mm' },
-  notesLine: { minHeight: '12mm', borderBottom: '1px solid #000', paddingTop: '2mm', paddingBottom: '2mm' },
+  notesBox: { marginBottom: '3mm', textAlign: 'left' },
+  notesLine: { minHeight: '12mm', borderBottom: '1px solid #000', paddingTop: '2mm', paddingBottom: '2mm', textAlign: 'left', whiteSpace: 'pre-wrap' },
   disclaimer: {
     border: '1px solid #000', padding: '3mm', marginBottom: '4mm',
     fontSize: '10px', textAlign: 'justify', lineHeight: 1.5,
@@ -174,7 +174,7 @@ export const RefractionPrintSheet: React.FC<Props> = ({
           <tr>
             <th style={S.th}></th>
             <th style={S.th}><b>Mắt</b><br /><En s="(Eye)" /></th>
-            <th style={S.th}><b>Độ cầu/viễn</b><br /><En s="(SPH)" /></th>
+            <th style={S.th}><b>Độ cận/viễn</b><br /><En s="(SPH)" /></th>
             <th style={S.th}><b>Độ loạn</b><br /><En s="(CYL)" /></th>
             <th style={S.th}><b>Trục loạn</b><br /><En s="(AXIS)" /></th>
             <th style={S.th}><b>Thị lực</b><br /><En s="(BCVA)" /></th>
@@ -238,7 +238,7 @@ export const RefractionPrintSheet: React.FC<Props> = ({
           <tr>
             <th style={S.th}></th>
             <th style={S.th}><b>Mắt</b><br /><En s="(Eye)" /></th>
-            <th style={S.th}><b>Độ cầu/viễn</b><br /><En s="(SPH)" /></th>
+            <th style={S.th}><b>Độ cận/viễn</b><br /><En s="(SPH)" /></th>
             <th style={S.th}><b>Độ loạn</b><br /><En s="(CYL)" /></th>
             <th style={S.th}><b>Trục loạn</b></th>
             <th style={S.th}><b>Thị lực</b></th>

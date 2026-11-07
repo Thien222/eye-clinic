@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../services/db';
 import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 import { ClinicSettings } from '../types';
-import { Save, Download, Upload, Settings as SettingsIcon, Database, FileText, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock } from 'lucide-react';
+import { Save, Download, Upload, Settings as SettingsIcon, Database, FileText, Ticket, Glasses, Receipt, Shield, Trash2, FolderOpen, Lock, Building2, Printer, Eye, Info, RefreshCw, KeyRound } from 'lucide-react';
+import { PageHeader, Card, Field, Button, IconButton, Badge, EmptyState } from './ui';
 
 type SettingsTab = 'general' | 'vat' | 'refraction' | 'backup' | 'security';
 
@@ -361,506 +362,528 @@ export const Settings: React.FC = () => {
   ];
 
   return (
-    <div className="flex gap-6 h-full">
-      {/* Sidebar Tabs */}
-      <div className="w-56 clinic-card p-4">
-        <h3 className="font-bold text-gray-700 mb-4 text-sm uppercase tracking-wide">Cài Đặt</h3>
-        <div className="space-y-1">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all ${activeTab === tab.id
-                ? 'bg-brand-100 text-brand-700'
-                : 'text-gray-600 hover:bg-gray-100'
-                }`}
-            >
-              <tab.icon size={18} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="max-w-7xl mx-auto w-full page-fill">
+      <PageHeader
+        title="Cài đặt"
+        subtitle="Thông tin phòng khám, nội dung phiếu in, thuế, sao lưu và bảo mật"
+        icon={SettingsIcon}
+      />
 
-      {/* Content Area */}
-      <div className="flex-1 clinic-card p-6 overflow-y-auto">
-        {/* General Settings */}
-        {activeTab === 'general' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Thông Tin Phòng Khám</h2>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tên phòng khám *</label>
-                <input
-                  value={settings.name}
-                  onChange={e => {
-                    const name = e.target.value;
-                    setSettings(prev => {
-                      const next = { ...prev, name };
-                      const oldHeader = prev.refraction?.header?.trim();
-                      const oldName = prev.name?.trim();
-                      if (!oldHeader || oldHeader === oldName) {
-                        next.refraction = { ...prev.refraction!, header: name };
-                      }
-                      return next;
-                    });
-                  }}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tên bác sĩ *</label>
-                <input
-                  value={settings.doctorName || ''}
-                  onChange={e => setSettings({ ...settings, doctorName: e.target.value })}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Địa chỉ</label>
-                <input
-                  value={settings.address}
-                  onChange={e => setSettings({ ...settings, address: e.target.value })}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại *</label>
-                <input
-                  value={settings.phone}
-                  onChange={e => setSettings({ ...settings, phone: e.target.value })}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  value={settings.email}
-                  onChange={e => setSettings({ ...settings, email: e.target.value })}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giờ làm việc</label>
-                <input
-                  value={settings.workingHours || ''}
-                  onChange={e => setSettings({ ...settings, workingHours: e.target.value })}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                  placeholder="Từ 8h đến 19h, Thứ hai đến Chủ nhật"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Logo (URL ảnh hoặc base64)</label>
-                <input
-                  value={settings.logoUrl || ''}
-                  onChange={e => setSettings({ ...settings, logoUrl: e.target.value })}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                  placeholder="https://... hoặc data:image/png;base64,..."
-                />
-                {settings.logoUrl && (
-                  <img src={settings.logoUrl} alt="Logo preview" className="mt-2 max-h-16 object-contain" />
-                )}
-              </div>
-            </div>
-
-            {/* Tùy chỉnh nội dung phiếu in */}
-            <div className="border-t pt-5">
-              <h3 className="text-base font-bold text-gray-800 mb-4">Tùy chỉnh nội dung phiếu in</h3>
-
-              {/* Hóa đơn */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-                  <FileText size={15} /> Hóa đơn bán hàng
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề hóa đơn</label>
-                    <input
-                      value={settings.invoice?.header || ''}
-                      onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, header: e.target.value } })}
-                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
-                      placeholder="HÓA ĐƠN BÁN LẺ"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Dòng chân hóa đơn</label>
-                    <input
-                      value={settings.invoice?.footer || ''}
-                      onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, footer: e.target.value } })}
-                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
-                      placeholder="Cảm ơn quý khách!"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Phiếu STT */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-                  <Ticket size={15} /> Phiếu số thứ tự
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tên trên phiếu STT</label>
-                    <input
-                      value={settings.ticket?.header || ''}
-                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, header: e.target.value } })}
-                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
-                      placeholder={settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}
-                    />
-                    <p className="text-xs text-gray-400 mt-0.5">Để trống = dùng tên phòng khám ở trên</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Dòng phụ trên phiếu STT</label>
-                    <input
-                      value={settings.ticket?.subHeader || ''}
-                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, subHeader: e.target.value } })}
-                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
-                      placeholder={settings.doctorName || 'Tên bác sĩ'}
-                    />
-                    <p className="text-xs text-gray-400 mt-0.5">Để trống = dùng tên bác sĩ ở trên</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú phiếu STT</label>
-                    <input
-                      value={settings.ticket?.note || ''}
-                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, note: e.target.value } })}
-                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
-                      placeholder="Khách hàng vui lòng chờ đến STT"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Dòng chân phiếu STT</label>
-                    <input
-                      value={settings.ticket?.footer || ''}
-                      onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, footer: e.target.value } })}
-                      className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-brand-500"
-                      placeholder="Phiếu có hiệu lực trong ngày"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Xem trước các phiếu in */}
-            <div className="border-t pt-5">
-              <h3 className="text-base font-bold text-gray-800 mb-1">Xem trước phiếu in</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Xem trước sẽ cập nhật theo nội dung bạn nhập ở trên.
-              </p>
-              <div className="flex flex-wrap gap-8 justify-center sm:justify-start">
-                {/* Xem trước hóa đơn */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1.5">
-                    <FileText size={15} /> Hóa đơn (thermal 50mm)
-                  </h4>
-                  <div className="bg-gray-100 p-4 rounded-lg w-[200px] mx-auto text-center text-xs border">
-                    <p className="font-bold uppercase">{settings.name}</p>
-                    <p>{settings.doctorName}</p>
-                    {settings.phone && <p>ĐT: {settings.phone}</p>}
-                    <p className="border-t border-dashed mt-2 pt-2 font-bold">{settings.invoice?.header || 'HÓA ĐƠN BÁN LẺ'}</p>
-                    <p className="text-gray-400 my-2">[Nội dung hóa đơn]</p>
-                    <p className="border-t border-dashed pt-2 italic">{settings.invoice?.footer || 'Cảm ơn quý khách!'}</p>
-                  </div>
-                </div>
-
-                {/* Xem trước phiếu STT */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-1.5">
-                    <Ticket size={15} /> Phiếu số thứ tự (57mm x 50mm)
-                  </h4>
-                  <div className="bg-gray-100 p-4 rounded-lg w-[200px] mx-auto text-center text-xs border">
-                    <p className="font-bold uppercase">{settings.name}</p>
-                    <p>{settings.doctorName}</p>
-                    <p className="text-4xl font-bold border-y border-black my-2 py-2">101</p>
-                    <p className="font-medium">Nguyễn Văn A</p>
-                    <p className="text-gray-500">{settings.ticket?.note || 'Khách hàng vui lòng chờ đến STT'}</p>
-                    <p className="text-gray-400">{settings.ticket?.footer || 'Phiếu có hiệu lực trong ngày'} DD/MM/YYYY</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* VAT Settings */}
-        {activeTab === 'vat' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Cài Đặt Thuế VAT</h2>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.vat?.enabled || false}
-                  onChange={e => setSettings({ ...settings, vat: { ...settings.vat!, enabled: e.target.checked } })}
-                  className="w-5 h-5"
-                />
-                <span className="font-medium">Bật tính thuế VAT trên hóa đơn</span>
-              </label>
-            </div>
-            {settings.vat?.enabled && (
-              <div className="max-w-xs">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Thuế suất VAT (%)</label>
-                <input
-                  type="number"
-                  value={settings.vat?.rate || 10}
-                  onChange={e => setSettings({ ...settings, vat: { ...settings.vat!, rate: parseInt(e.target.value) || 0 } })}
-                  className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-brand-500"
-                  min="0"
-                  max="100"
-                />
-                <p className="text-xs text-gray-500 mt-1">Thuế suất thông thường: 10%</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Refraction Settings */}
-        {activeTab === 'refraction' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Tùy Chỉnh Phiếu Khúc Xạ (A5)</h2>
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tên phiếu (tiêu đề chính giữa)</label>
-                <input
-                  value={settings.refraction?.title || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, title: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                  placeholder="PHIẾU KHÚC XẠ"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề góc phải (VD: KHÁM KHÚC XẠ)</label>
-                <input
-                  value={settings.refraction?.rightHeader || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, rightHeader: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                  placeholder="KHÁM KHÚC XẠ"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giờ làm việc (in góc phải, in nghiêng)</label>
-                <input
-                  value={settings.workingHours || ''}
-                  onChange={e => setSettings({ ...settings, workingHours: e.target.value })}
-                  className="w-full border rounded-lg p-3"
-                  placeholder="Từ 8h đến 19h, Thứ hai đến Chủ nhật"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nhãn chữ ký khách hàng</label>
-                <input
-                  value={settings.refraction?.sigLabel1 || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigLabel1: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                  placeholder="Xác nhận của khách hàng"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nhãn chữ ký người thực hiện</label>
-                <input
-                  value={settings.refraction?.sigLabel2 || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigLabel2: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                  placeholder="Người thực hiện"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Chú thích dưới chữ ký</label>
-                <input
-                  value={settings.refraction?.sigSubText || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigSubText: e.target.value } })}
-                  className="w-full border rounded-lg p-3"
-                  placeholder="(Ký và ghi rõ họ tên)"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lưu ý 1</label>
-                <textarea
-                  value={settings.refraction?.disclaimer1 || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, disclaimer1: e.target.value } })}
-                  className="w-full border rounded-lg p-3 h-20"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lưu ý 2</label>
-                <textarea
-                  value={settings.refraction?.disclaimer2 || ''}
-                  onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, disclaimer2: e.target.value } })}
-                  className="w-full border rounded-lg p-3 h-20"
-                />
-              </div>
-            </div>
-            <p className="text-sm text-gray-500">Tên phòng khám và bác sĩ lấy từ tab Thông tin chung (góc trái phiếu in).</p>
-          </div>
-        )}
-
-        {activeTab === 'backup' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 border-b pb-3 flex items-center gap-2">
-              <Database size={24} className="text-brand-600" /> Sao Lưu & Khôi Phục
-            </h2>
-
-            {/* Manual Backup/Restore Buttons */}
-            <div className="grid grid-cols-3 gap-4">
+      <div className="flex flex-col lg:flex-row gap-6 items-start fill-y">
+        {/* Sidebar Tabs */}
+        <nav className="w-full lg:w-80 shrink-0 clinic-card p-2 lg:self-start lg:max-h-full lg:overflow-y-auto scroll-thin" aria-label="Mục cài đặt">
+          <div className="flex lg:flex-col gap-1 overflow-x-auto">
+            {tabs.map(tab => (
               <button
-                onClick={handleLoadTestData}
-                className="py-6 border-2 border-dashed border-green-400 rounded-lg hover:bg-green-50 flex flex-col items-center justify-center gap-2 transition-colors"
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                aria-current={activeTab === tab.id ? 'page' : undefined}
+                className={`shrink-0 lg:w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm font-medium whitespace-nowrap transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${activeTab === tab.id
+                  ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200/60'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
               >
-                <Database size={32} className="text-green-600" />
-                <span className="font-medium text-green-700">Nạp dữ liệu TEST</span>
-                <span className="text-xs text-gray-500">8 BN + 9 SP kho + 2 HĐ</span>
+                <tab.icon size={18} aria-hidden />
+                {tab.label}
               </button>
+            ))}
+          </div>
+        </nav>
 
-              <button
-                onClick={handleBackup}
-                className="py-6 border-2 border-dashed border-brand-300 rounded-lg hover:bg-brand-50 flex flex-col items-center justify-center gap-2 transition-colors"
-              >
-                <Download size={32} className="text-brand-600" />
-                <span className="font-medium">Tải xuống bản sao lưu</span>
-                <span className="text-xs text-gray-500">Lưu toàn bộ dữ liệu về file .json</span>
-              </button>
-
-              <label className="py-6 border-2 border-dashed border-orange-300 rounded-lg hover:bg-orange-50 flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer">
-                <Upload size={32} className="text-orange-500" />
-                <span className="font-medium">Khôi phục dữ liệu</span>
-                <span className="text-xs text-gray-500">Chọn file .json để khôi phục</span>
-                <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleRestore} />
-              </label>
-            </div>
-
-
-
-            {/* Auto Backup Config */}
-            <div className="bg-gray-50 rounded-lg p-6 space-y-4">
-              <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                <Shield size={18} /> Cấu hình sao lưu tự động (Local)
-              </h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Đường dẫn lưu file</label>
-                  <input
-                    value={settings.backup?.path || ''}
-                    onChange={e => setSettings({ ...settings, backup: { ...settings.backup!, path: e.target.value } })}
-                    className="w-full border rounded-lg p-3"
-                    placeholder="C:\EyeClinicBackup"
-                  />
+        {/* Content Area */}
+        <div className="flex-1 min-w-0 w-full space-y-6 lg:flex lg:flex-col lg:self-stretch lg:min-h-0">
+          <div className="page-scroll space-y-6 lg:-mx-1 lg:px-1 lg:pt-0.5 lg:pb-1">
+          {/* General Settings */}
+          {activeTab === 'general' && (
+            <>
+              <Card title="Thông tin phòng khám" icon={Building2} padding="lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Tên phòng khám" required htmlFor="set-name">
+                    <input
+                      id="set-name"
+                      value={settings.name}
+                      onChange={e => {
+                        const name = e.target.value;
+                        setSettings(prev => {
+                          const next = { ...prev, name };
+                          const oldHeader = prev.refraction?.header?.trim();
+                          const oldName = prev.name?.trim();
+                          if (!oldHeader || oldHeader === oldName) {
+                            next.refraction = { ...prev.refraction!, header: name };
+                          }
+                          return next;
+                        });
+                      }}
+                      className="clinic-input"
+                    />
+                  </Field>
+                  <Field label="Tên bác sĩ" required htmlFor="set-doctor">
+                    <input
+                      id="set-doctor"
+                      value={settings.doctorName || ''}
+                      onChange={e => setSettings({ ...settings, doctorName: e.target.value })}
+                      className="clinic-input"
+                    />
+                  </Field>
+                  <Field label="Địa chỉ" htmlFor="set-address" className="md:col-span-2">
+                    <input
+                      id="set-address"
+                      value={settings.address}
+                      onChange={e => setSettings({ ...settings, address: e.target.value })}
+                      className="clinic-input"
+                    />
+                  </Field>
+                  <Field label="Số điện thoại" required htmlFor="set-phone">
+                    <input
+                      id="set-phone"
+                      value={settings.phone}
+                      onChange={e => setSettings({ ...settings, phone: e.target.value })}
+                      className="clinic-input"
+                    />
+                  </Field>
+                  <Field label="Email" htmlFor="set-email">
+                    <input
+                      id="set-email"
+                      value={settings.email}
+                      onChange={e => setSettings({ ...settings, email: e.target.value })}
+                      className="clinic-input"
+                    />
+                  </Field>
+                  <Field label="Giờ làm việc" htmlFor="set-hours" className="md:col-span-2">
+                    <input
+                      id="set-hours"
+                      value={settings.workingHours || ''}
+                      onChange={e => setSettings({ ...settings, workingHours: e.target.value })}
+                      className="clinic-input"
+                      placeholder="Từ 8h đến 19h, Thứ hai đến Chủ nhật"
+                    />
+                  </Field>
+                  <Field label="Logo (URL ảnh hoặc base64)" htmlFor="set-logo" className="md:col-span-2">
+                    <input
+                      id="set-logo"
+                      value={settings.logoUrl || ''}
+                      onChange={e => setSettings({ ...settings, logoUrl: e.target.value })}
+                      className="clinic-input"
+                      placeholder="https://... hoặc data:image/png;base64,..."
+                    />
+                    {settings.logoUrl && (
+                      <div className="mt-3 inline-flex subtle-panel p-2">
+                        <img src={settings.logoUrl} alt="Logo preview" className="max-h-16 object-contain" />
+                      </div>
+                    )}
+                  </Field>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Giới hạn số file backup</label>
-                  <input
-                    type="number"
-                    value={settings.backup?.maxFiles || 10}
-                    onChange={e => setSettings({ ...settings, backup: { ...settings.backup!, maxFiles: parseInt(e.target.value) || 10 } })}
-                    className="w-full border rounded-lg p-3"
-                  />
+              </Card>
+
+              {/* Tùy chỉnh nội dung phiếu in */}
+              <Card title="Tùy chỉnh nội dung phiếu in" icon={Printer} padding="lg">
+                <div className="space-y-4">
+                  {/* Hóa đơn */}
+                  <div className="subtle-panel p-4">
+                    <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                      <FileText size={16} className="text-brand-600" aria-hidden /> Hóa đơn bán hàng
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Field label="Tiêu đề hóa đơn" htmlFor="set-inv-header">
+                        <input
+                          id="set-inv-header"
+                          value={settings.invoice?.header || ''}
+                          onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, header: e.target.value } })}
+                          className="clinic-input"
+                          placeholder="HÓA ĐƠN BÁN LẺ"
+                        />
+                      </Field>
+                      <Field label="Dòng chân hóa đơn" htmlFor="set-inv-footer">
+                        <input
+                          id="set-inv-footer"
+                          value={settings.invoice?.footer || ''}
+                          onChange={e => setSettings({ ...settings, invoice: { ...settings.invoice!, footer: e.target.value } })}
+                          className="clinic-input"
+                          placeholder="Cảm ơn quý khách!"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+
+                  {/* Phiếu STT */}
+                  <div className="subtle-panel p-4">
+                    <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                      <Ticket size={16} className="text-brand-600" aria-hidden /> Phiếu số thứ tự
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Field label="Tên trên phiếu STT" htmlFor="set-tk-header" help="Để trống = dùng tên phòng khám ở trên">
+                        <input
+                          id="set-tk-header"
+                          value={settings.ticket?.header || ''}
+                          onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, header: e.target.value } })}
+                          className="clinic-input"
+                          placeholder={settings.name || 'PHÒNG KHÁM MẮT NGOÀI GIỜ'}
+                        />
+                      </Field>
+                      <Field label="Dòng phụ trên phiếu STT" htmlFor="set-tk-sub" help="Để trống = dùng tên bác sĩ ở trên">
+                        <input
+                          id="set-tk-sub"
+                          value={settings.ticket?.subHeader || ''}
+                          onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, subHeader: e.target.value } })}
+                          className="clinic-input"
+                          placeholder={settings.doctorName || 'Tên bác sĩ'}
+                        />
+                      </Field>
+                      <Field label="Ghi chú phiếu STT" htmlFor="set-tk-note">
+                        <input
+                          id="set-tk-note"
+                          value={settings.ticket?.note || ''}
+                          onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, note: e.target.value } })}
+                          className="clinic-input"
+                          placeholder="Khách hàng vui lòng chờ đến STT"
+                        />
+                      </Field>
+                      <Field label="Dòng chân phiếu STT" htmlFor="set-tk-footer">
+                        <input
+                          id="set-tk-footer"
+                          value={settings.ticket?.footer || ''}
+                          onChange={e => setSettings({ ...settings, ticket: { ...settings.ticket!, footer: e.target.value } })}
+                          className="clinic-input"
+                          placeholder="Phiếu có hiệu lực trong ngày"
+                        />
+                      </Field>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-6 pt-4 border-t">
-                <label className="flex items-center gap-3 cursor-pointer">
+              </Card>
+
+              {/* Xem trước các phiếu in */}
+              <Card title="Xem trước phiếu in" icon={Eye} padding="lg">
+                <p className="text-sm text-slate-500 mb-4">
+                  Xem trước sẽ cập nhật theo nội dung bạn nhập ở trên.
+                </p>
+                <div className="flex flex-wrap gap-6 justify-center sm:justify-start">
+                  {/* Xem trước hóa đơn */}
+                  <div className="subtle-panel p-4">
+                    <h4 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                      <FileText size={16} className="text-slate-500" aria-hidden /> Hóa đơn (thermal 50mm)
+                    </h4>
+                    <div className="bg-white p-4 rounded-lg w-[200px] mx-auto text-center text-xs text-slate-900 border border-slate-200 shadow-soft">
+                      <p className="font-bold uppercase">{settings.name}</p>
+                      <p>{settings.doctorName}</p>
+                      {settings.phone && <p>ĐT: {settings.phone}</p>}
+                      <p className="border-t border-dashed border-slate-400 mt-2 pt-2 font-bold">{settings.invoice?.header || 'HÓA ĐƠN BÁN LẺ'}</p>
+                      <p className="text-slate-500 my-2">[Nội dung hóa đơn]</p>
+                      <p className="border-t border-dashed border-slate-400 pt-2 italic">{settings.invoice?.footer || 'Cảm ơn quý khách!'}</p>
+                    </div>
+                  </div>
+
+                  {/* Xem trước phiếu STT */}
+                  <div className="subtle-panel p-4">
+                    <h4 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                      <Ticket size={16} className="text-slate-500" aria-hidden /> Phiếu số thứ tự (57mm x 50mm)
+                    </h4>
+                    <div className="bg-white p-4 rounded-lg w-[200px] mx-auto text-center text-xs text-slate-900 border border-slate-200 shadow-soft">
+                      <p className="font-bold uppercase">{settings.name}</p>
+                      <p>{settings.doctorName}</p>
+                      <p className="text-4xl font-bold border-y border-slate-900 my-2 py-2 tabular-nums">101</p>
+                      <p className="font-medium">Nguyễn Văn A</p>
+                      <p className="text-slate-600">{settings.ticket?.note || 'Khách hàng vui lòng chờ đến STT'}</p>
+                      <p className="text-slate-500">{settings.ticket?.footer || 'Phiếu có hiệu lực trong ngày'} DD/MM/YYYY</p>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </>
+          )}
+
+          {/* VAT Settings */}
+          {activeTab === 'vat' && (
+            <Card title="Cài đặt thuế VAT" icon={Receipt} padding="lg">
+              <div className="space-y-4">
+                <label className="subtle-panel p-4 flex items-center gap-3 cursor-pointer hover:border-slate-300 transition-colors">
                   <input
                     type="checkbox"
-                    checked={settings.backup?.autoBackupOnClose || false}
-                    onChange={e => setSettings({ ...settings, backup: { ...settings.backup!, autoBackupOnClose: e.target.checked } })}
-                    className="w-5 h-5"
+                    checked={settings.vat?.enabled || false}
+                    onChange={e => setSettings({ ...settings, vat: { ...settings.vat!, enabled: e.target.checked } })}
+                    className="w-4 h-4 cursor-pointer"
                   />
-                  <span>Tự động backup khi đóng ứng dụng</span>
+                  <span className="text-sm font-medium text-slate-900">Bật tính thuế VAT trên hóa đơn</span>
                 </label>
+                {settings.vat?.enabled && (
+                  <Field label="Thuế suất VAT (%)" htmlFor="set-vat-rate" help="Thuế suất thông thường: 10%" className="max-w-xs">
+                    <input
+                      id="set-vat-rate"
+                      type="number"
+                      value={settings.vat?.rate || 10}
+                      onChange={e => setSettings({ ...settings, vat: { ...settings.vat!, rate: parseInt(e.target.value) || 0 } })}
+                      className="clinic-input tabular-nums"
+                      min="0"
+                      max="100"
+                    />
+                  </Field>
+                )}
               </div>
-            </div>
+            </Card>
+          )}
 
-            {/* History List */}
-            <div className="bg-white border rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-700 flex items-center gap-2">
-                  <FolderOpen size={18} /> Lịch Sử Sao Lưu ({backupHistory.length})
-                </h3>
-                <button
-                  onClick={loadBackupsFromDisk}
-                  className="text-sm text-brand-600 hover:text-brand-800 flex items-center gap-1"
-                >
-                  🔄 Làm mới
-                </button>
+          {/* Refraction Settings */}
+          {activeTab === 'refraction' && (
+            <Card title="Tùy chỉnh phiếu khúc xạ (A5)" icon={Glasses} padding="lg">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Tên phiếu (tiêu đề chính giữa)" htmlFor="set-rx-title">
+                  <input
+                    id="set-rx-title"
+                    value={settings.refraction?.title || ''}
+                    onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, title: e.target.value } })}
+                    className="clinic-input"
+                    placeholder="PHIẾU KHÚC XẠ"
+                  />
+                </Field>
+                <Field label="Tiêu đề góc phải (VD: KHÁM KHÚC XẠ)" htmlFor="set-rx-right">
+                  <input
+                    id="set-rx-right"
+                    value={settings.refraction?.rightHeader || ''}
+                    onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, rightHeader: e.target.value } })}
+                    className="clinic-input"
+                    placeholder="KHÁM KHÚC XẠ"
+                  />
+                </Field>
+                <Field label="Giờ làm việc (in góc phải, in nghiêng)" htmlFor="set-rx-hours">
+                  <input
+                    id="set-rx-hours"
+                    value={settings.workingHours || ''}
+                    onChange={e => setSettings({ ...settings, workingHours: e.target.value })}
+                    className="clinic-input"
+                    placeholder="Từ 8h đến 19h, Thứ hai đến Chủ nhật"
+                  />
+                </Field>
+                <Field label="Nhãn chữ ký khách hàng" htmlFor="set-rx-sig1">
+                  <input
+                    id="set-rx-sig1"
+                    value={settings.refraction?.sigLabel1 || ''}
+                    onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigLabel1: e.target.value } })}
+                    className="clinic-input"
+                    placeholder="Xác nhận của khách hàng"
+                  />
+                </Field>
+                <Field label="Nhãn chữ ký người thực hiện" htmlFor="set-rx-sig2">
+                  <input
+                    id="set-rx-sig2"
+                    value={settings.refraction?.sigLabel2 || ''}
+                    onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigLabel2: e.target.value } })}
+                    className="clinic-input"
+                    placeholder="Người thực hiện"
+                  />
+                </Field>
+                <Field label="Chú thích dưới chữ ký" htmlFor="set-rx-sigsub">
+                  <input
+                    id="set-rx-sigsub"
+                    value={settings.refraction?.sigSubText || ''}
+                    onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, sigSubText: e.target.value } })}
+                    className="clinic-input"
+                    placeholder="(Ký và ghi rõ họ tên)"
+                  />
+                </Field>
+                <Field label="Lưu ý 1" htmlFor="set-rx-d1" className="md:col-span-2">
+                  <textarea
+                    id="set-rx-d1"
+                    value={settings.refraction?.disclaimer1 || ''}
+                    onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, disclaimer1: e.target.value } })}
+                    className="clinic-input"
+                    rows={3}
+                  />
+                </Field>
+                <Field label="Lưu ý 2" htmlFor="set-rx-d2" className="md:col-span-2">
+                  <textarea
+                    id="set-rx-d2"
+                    value={settings.refraction?.disclaimer2 || ''}
+                    onChange={e => setSettings({ ...settings, refraction: { ...settings.refraction!, disclaimer2: e.target.value } })}
+                    className="clinic-input"
+                    rows={3}
+                  />
+                </Field>
               </div>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {backupHistory.map((record, index) => (
-                  <div key={record.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
-                    <div className="flex items-center gap-3">
-                      <div className="font-mono text-sm font-medium">{record.filename}</div>
-                      <div className="text-xs text-gray-500">{new Date(record.date).toLocaleString('vi-VN')}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleRestoreFromBackup(record)}
-                        className="text-green-600 hover:bg-green-50 px-2 py-1 rounded flex items-center gap-1 text-sm font-medium"
-                        title="Khôi phục từ backup này"
-                      >
-                        <Upload size={14} /> Khôi phục
-                      </button>
-                      <button onClick={() => handleDeleteBackup(record)} className="text-red-500 hover:bg-red-50 p-1 rounded" title="Xóa backup"><Trash2 size={16} /></button>
-                    </div>
-                  </div>
-                ))}
-                {backupHistory.length === 0 && <p className="text-center text-gray-500 py-4">Chưa có bản sao lưu nào.</p>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'security' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-800 border-b pb-3 flex items-center gap-2">
-              <Shield size={24} className="text-brand-600" /> Bảo Mật & Quản Trị Viên
-            </h2>
-
-            <div className="bg-red-50 p-6 rounded-lg border border-red-100 mb-6">
-              <h3 className="font-bold text-red-800 mb-2 text-lg">Đổi Mật Khẩu Admin</h3>
-              <p className="text-sm text-red-600 mb-6">
-                Mật khẩu này được dùng để truy cập các tính năng quản trị cao cấp như Quản lý Kho, Thống kê doanh thu và Cài đặt hệ thống.
+              <p className="clinic-help mt-4 flex items-center gap-1.5">
+                <Info size={14} aria-hidden /> Tên phòng khám và bác sĩ lấy từ tab Thông tin chung (góc trái phiếu in).
               </p>
+            </Card>
+          )}
 
-              <form className="space-y-4 max-w-md bg-white p-6 rounded shadow-sm border">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu mới</label>
-                  <input
-                    type="password"
-                    className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-red-500 outline-none"
-                    placeholder="Nhập mật khẩu mới..."
-                    value={passwordForm.newPassword}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                  />
+          {activeTab === 'backup' && (
+            <>
+              <Card title="Sao lưu & khôi phục" icon={Database} padding="lg">
+                {/* Manual Backup/Restore Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <button
+                    type="button"
+                    onClick={handleLoadTestData}
+                    className="group p-5 border-2 border-dashed border-slate-300 rounded-xl hover:border-amber-400 hover:bg-amber-50/50 flex flex-col items-center justify-center gap-2 text-center transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    <span className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-100 flex items-center justify-center">
+                      <Database size={22} aria-hidden />
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">Nạp dữ liệu TEST</span>
+                    <span className="text-xs text-slate-500">8 BN + 9 SP kho + 2 HĐ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleBackup}
+                    className="group p-5 border-2 border-dashed border-slate-300 rounded-xl hover:border-brand-400 hover:bg-brand-50/50 flex flex-col items-center justify-center gap-2 text-center transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    <span className="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 ring-1 ring-inset ring-brand-100 flex items-center justify-center">
+                      <Download size={22} aria-hidden />
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">Tải xuống bản sao lưu</span>
+                    <span className="text-xs text-slate-500">Lưu toàn bộ dữ liệu về file .json</span>
+                  </button>
+
+                  <label className="group p-5 border-2 border-dashed border-slate-300 rounded-xl hover:border-sky-400 hover:bg-sky-50/50 flex flex-col items-center justify-center gap-2 text-center transition-colors duration-150 cursor-pointer focus-within:ring-2 focus-within:ring-brand-500">
+                    <span className="w-11 h-11 rounded-xl bg-sky-50 text-sky-600 ring-1 ring-inset ring-sky-100 flex items-center justify-center">
+                      <Upload size={22} aria-hidden />
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">Khôi phục dữ liệu</span>
+                    <span className="text-xs text-slate-500">Chọn file .json để khôi phục</span>
+                    <input ref={fileInputRef} type="file" accept=".json" className="sr-only" onChange={handleRestore} />
+                  </label>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Xác nhận mật khẩu</label>
-                  <input
-                    type="password"
-                    className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-red-500 outline-none"
-                    placeholder="Nhập lại mật khẩu..."
-                    value={passwordForm.confirmPassword}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                  />
+              </Card>
+
+              {/* Auto Backup Config */}
+              <Card title="Cấu hình sao lưu tự động (Local)" icon={Shield} padding="lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Đường dẫn lưu file" htmlFor="set-bk-path">
+                    <input
+                      id="set-bk-path"
+                      value={settings.backup?.path || ''}
+                      onChange={e => setSettings({ ...settings, backup: { ...settings.backup!, path: e.target.value } })}
+                      className="clinic-input font-mono"
+                      placeholder="C:\EyeClinicBackup"
+                    />
+                  </Field>
+                  <Field label="Giới hạn số file backup" htmlFor="set-bk-max">
+                    <input
+                      id="set-bk-max"
+                      type="number"
+                      value={settings.backup?.maxFiles || 10}
+                      onChange={e => setSettings({ ...settings, backup: { ...settings.backup!, maxFiles: parseInt(e.target.value) || 10 } })}
+                      className="clinic-input tabular-nums"
+                    />
+                  </Field>
                 </div>
-                <button
-                  onClick={handleChangePassword}
-                  className="w-full bg-red-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-red-700 transition-colors shadow-lg"
-                >
-                  Cập nhật mật khẩu
-                </button>
-              </form>
-            </div>
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <label className="inline-flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.backup?.autoBackupOnClose || false}
+                      onChange={e => setSettings({ ...settings, backup: { ...settings.backup!, autoBackupOnClose: e.target.checked } })}
+                      className="w-4 h-4 cursor-pointer"
+                    />
+                    <span className="text-sm text-slate-700">Tự động backup khi đóng ứng dụng</span>
+                  </label>
+                </div>
+              </Card>
+
+              {/* History List */}
+              <Card
+                title={<>Lịch sử sao lưu <Badge tone="neutral">{backupHistory.length}</Badge></>}
+                icon={FolderOpen}
+                actions={
+                  <Button variant="ghost" size="sm" icon={RefreshCw} onClick={loadBackupsFromDisk}>
+                    Làm mới
+                  </Button>
+                }
+              >
+                {backupHistory.length === 0 ? (
+                  <EmptyState icon={FolderOpen} title="Chưa có bản sao lưu nào." className="py-8" />
+                ) : (
+                  <div className="table-wrap max-h-80 overflow-y-auto">
+                    <table className="clinic-table">
+                      <thead className="sticky top-0 z-10">
+                        <tr>
+                          <th className="min-w-[12rem]">Tên file</th>
+                          <th>Thời gian</th>
+                          <th className="num">Kích thước</th>
+                          <th className="text-right">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {backupHistory.map(record => (
+                          <tr key={record.id}>
+                            <td className="font-mono text-sm font-medium text-slate-900 break-all min-w-[12rem]">{record.filename}</td>
+                            <td className="whitespace-nowrap text-slate-600 tabular-nums">{new Date(record.date).toLocaleString('vi-VN')}</td>
+                            <td className="num whitespace-nowrap text-slate-600">{record.size}</td>
+                            <td>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  icon={Upload}
+                                  onClick={() => handleRestoreFromBackup(record)}
+                                  title="Khôi phục từ backup này"
+                                >
+                                  Khôi phục
+                                </Button>
+                                <IconButton icon={Trash2} label="Xóa backup" tone="danger" size="sm" onClick={() => handleDeleteBackup(record)} />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </>
+          )}
+
+          {activeTab === 'security' && (
+            <Card title="Bảo mật & quản trị viên" icon={Shield} padding="lg">
+              <div className="max-w-md">
+                <h4 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  <KeyRound size={16} className="text-brand-600" aria-hidden /> Đổi mật khẩu Admin
+                </h4>
+                <p className="text-sm text-slate-600 mt-1 mb-4">
+                  Mật khẩu này được dùng để truy cập các tính năng quản trị cao cấp như Quản lý Kho, Thống kê doanh thu và Cài đặt hệ thống.
+                </p>
+
+                <form className="subtle-panel p-4 space-y-4">
+                  <Field label="Mật khẩu mới" htmlFor="set-pw-new">
+                    <input
+                      id="set-pw-new"
+                      type="password"
+                      className="clinic-input"
+                      placeholder="Nhập mật khẩu mới..."
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Xác nhận mật khẩu" htmlFor="set-pw-confirm">
+                    <input
+                      id="set-pw-confirm"
+                      type="password"
+                      className="clinic-input"
+                      placeholder="Nhập lại mật khẩu..."
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    />
+                  </Field>
+                  <Button type="submit" variant="outline" icon={Lock} fullWidth onClick={handleChangePassword}>
+                    Cập nhật mật khẩu
+                  </Button>
+                </form>
+              </div>
+            </Card>
+          )}
+
           </div>
-        )}
 
-        {/* Save Button */}
-        <div className="flex justify-end pt-6 border-t mt-6">
-          <button
-            onClick={handleSave}
-            className="bg-brand-600 text-white px-8 py-3 rounded-lg shadow-lg hover:bg-brand-700 flex items-center gap-2 font-bold"
-          >
-            <Save size={20} /> Lưu Cài Đặt
-          </button>
+          {/* Save Button — đứng yên ở đáy, nội dung phía trên tự cuộn */}
+          <div className="clinic-card shrink-0 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-slate-500">Thay đổi chỉ có hiệu lực sau khi bấm Lưu cài đặt.</p>
+            <Button icon={Save} onClick={handleSave}>
+              Lưu Cài Đặt
+            </Button>
+          </div>
         </div>
       </div>
-    </div >
+    </div>
   );
 };

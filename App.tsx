@@ -45,6 +45,14 @@ const GlobalAuthHandler = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Đóng hộp thoại đăng nhập khi đã là admin (vd: mở thẳng #/statistics sau Ctrl+F5,
+  // ProtectedRoute mở modal trước khi AuthContext kịp đọc sessionStorage).
+  useEffect(() => {
+    if (isAdmin && isLoginModalOpen) {
+      hideLoginModal();
+    }
+  }, [isAdmin, isLoginModalOpen, hideLoginModal]);
+
   const handleLoginSuccess = () => {
     login();
   };
@@ -52,7 +60,7 @@ const GlobalAuthHandler = () => {
   const handleClose = () => {
     hideLoginModal();
     // If we are on a protected route and close the modal without logging in, go back home
-    if (!isAdmin && ['/statistics', '/settings', '/inventory'].includes(location.pathname)) {
+    if (!isAdmin && ['/statistics', '/settings'].includes(location.pathname)) {
       navigate('/');
     }
   };
@@ -77,7 +85,7 @@ const AppContent: React.FC = () => {
           <Route path="refraction" element={<Refraction />} />
           <Route path="doctor" element={<Doctor />} />
           <Route path="billing" element={<BillingInventory />} /> {/* Billing is public */}
-          <Route path="inventory" element={<ProtectedRoute><BillingInventory activeTab="inventory" /></ProtectedRoute>} />
+          <Route path="inventory" element={<Navigate to="/billing" replace />} />
           <Route path="statistics" element={<ProtectedRoute><Statistics /></ProtectedRoute>} />
           <Route path="history" element={<History />} />
           <Route path="settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

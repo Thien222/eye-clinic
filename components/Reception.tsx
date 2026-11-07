@@ -3,12 +3,8 @@ import { db } from '../services/db';
 import { useClinicDbUpdated } from '../hooks/useClinicDbUpdated';
 import { getLocalDateString } from '../services/utils';
 import { Patient } from '../types';
-import { Printer, RefreshCw, Plus, Edit2, Trash2, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { PageHeader } from './ui/PageHeader';
-import { Card } from './ui/Card';
-import { Button } from './ui/Button';
-import { SearchInput } from './ui/SearchInput';
-import { Badge } from './ui/Badge';
+import { Printer, RefreshCw, Plus, Edit2, Trash2, ChevronLeft, ChevronRight, Ticket, UserPlus, Users } from 'lucide-react';
+import { PageHeader, Card, Button, IconButton, SearchInput, Badge, Modal, Field, EmptyState, DatePicker } from './ui';
 import { getPatientStatus } from '../services/statusStyles';
 
 // UUID generator that works on HTTP
@@ -165,9 +161,11 @@ export const Reception: React.FC = () => {
   const ticketSettings = settings.ticket;
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    // Màn rộng (lg+): trang vừa khung, không cuộn tổng — chỉ bảng cuộn bên trong
+    <div className="page-fill">
       <PageHeader
         title="Tiếp tân & Bốc số"
+        icon={Ticket}
         subtitle={showAllDates
           ? `Tất cả: ${filteredPatients.length} bệnh nhân`
           : `Ngày ${filterDate.split('-').reverse().join('/')}: ${filteredPatients.length} bệnh nhân`
@@ -179,8 +177,8 @@ export const Reception: React.FC = () => {
         }
       />
 
-      <Card padding="md">
-        <div className="mb-4 flex gap-3 items-center flex-wrap">
+      <Card padding="md" className="flex flex-col fill-y">
+        <div className="mb-4 flex gap-3 items-center flex-wrap shrink-0">
           <SearchInput
             containerClassName="flex-1 min-w-[200px]"
             placeholder="Tìm kiếm (Tên, SĐT)..."
@@ -188,114 +186,94 @@ export const Reception: React.FC = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
 
-          <div className="flex items-center gap-2">
-            <Calendar size={18} className="text-slate-400" />
-            <input
-              type="date"
+          <div className="flex items-center gap-2 flex-wrap">
+            <DatePicker
               value={filterDate}
-              onChange={(e) => {
-                setFilterDate(e.target.value);
+              onChange={(v) => {
+                setFilterDate(v);
                 setShowAllDates(false);
               }}
-              className="clinic-input w-auto"
+              className="w-auto"
+              aria-label="Lọc theo ngày"
             />
             <Button
               variant={showAllDates ? 'secondary' : 'outline'}
-              size="sm"
               onClick={() => setShowAllDates(!showAllDates)}
             >
               {showAllDates ? 'Tất cả' : 'Lọc ngày'}
             </Button>
+            <IconButton icon={RefreshCw} label="Làm mới" onClick={loadPatients} />
           </div>
-
-          <Button variant="ghost" size="sm" onClick={loadPatients} aria-label="Làm mới">
-            <RefreshCw size={18} />
-          </Button>
         </div>
 
-        <div className="mobile-table-wrapper overflow-x-auto">
-        <table className="w-full text-left text-sm clinic-table">
-          <thead>
-            <tr>
-              <th className="p-3 w-16">STT</th>
-              <th className="p-3 w-16">Ngày</th>
-              <th className="p-3">Họ tên</th>
-              <th className="p-3 w-20">Năm sinh</th>
-              <th className="p-3 w-24">Thị lực</th>
-              <th className="p-3">Lý do</th>
-              <th className="p-3 w-28">Trạng thái</th>
-              <th className="p-3 w-28">Hành động</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {paginatedPatients.map((p) => {
-              const status = getStatusLabel(p.status);
-              return (
-                <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="p-3 font-bold text-brand-600 tabular-nums">{String(p.ticketNumber).padStart(3, '0')}</td>
-                  <td className="p-3 text-slate-500 text-xs">{formatDate(p.timestamp)}</td>
-                  <td className="p-3 font-medium text-slate-900">{p.fullName}</td>
-                  <td className="p-3">{p.dob}</td>
-                  <td className="p-3 text-xs">
-                    {p.initialVA?.od || '-'} / {p.initialVA?.os || '-'}
-                    {p.hasGlasses && <Badge className="ml-1.5 bg-sky-50 text-sky-700 ring-1 ring-sky-200">K</Badge>}
-                  </td>
-                  <td className="p-3 text-slate-500 truncate max-w-[150px]">{p.reason}</td>
-                  <td className="p-3">
-                    <Badge className={status.className}>{status.text}</Badge>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => printTicketOnly(p)}
-                        className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
-                        title="In lại phiếu STT"
-                      >
-                        <Printer size={15} />
-                      </button>
-                      <button
-                        onClick={() => setEditingPatient(p)}
-                        className="p-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors cursor-pointer"
-                        title="Sửa thông tin"
-                      >
-                        <Edit2 size={15} />
-                      </button>
-                      <button
-                        onClick={() => handleDeletePatient(p)}
-                        className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors cursor-pointer"
-                        title="Xóa bệnh nhân"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
+        <div className="table-wrap mobile-table-wrapper lg:overflow-y-auto fill-y">
+          <table className="clinic-table">
+            <thead className="sticky top-0 z-10">
+              <tr className="[&>th]:bg-slate-50">
+                <th className="w-16">STT</th>
+                <th className="w-16 hidden xl:table-cell">Ngày</th>
+                <th>Họ tên</th>
+                <th className="w-24 whitespace-nowrap">Năm sinh</th>
+                <th className="w-28">Thị lực</th>
+                <th>Lý do</th>
+                <th className="w-32 whitespace-nowrap">Trạng thái</th>
+                <th className="w-px whitespace-nowrap text-right">Hành động</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedPatients.map((p) => {
+                const status = getStatusLabel(p.status);
+                return (
+                  <tr key={p.id}>
+                    <td className="font-bold text-brand-600 tabular-nums">{String(p.ticketNumber).padStart(3, '0')}</td>
+                    <td className="text-slate-500 tabular-nums whitespace-nowrap hidden xl:table-cell">{formatDate(p.timestamp)}</td>
+                    <td className="font-medium text-slate-900 whitespace-nowrap">{p.fullName}</td>
+                    <td className="tabular-nums whitespace-nowrap">{p.dob}</td>
+                    <td className="whitespace-nowrap">
+                      <span className="tabular-nums">{p.initialVA?.od || '-'} / {p.initialVA?.os || '-'}</span>
+                      {p.hasGlasses && <Badge tone="info" className="ml-1.5">K</Badge>}
+                    </td>
+                    <td className="text-slate-500 truncate max-w-[150px]">{p.reason}</td>
+                    <td className="whitespace-nowrap">
+                      <Badge tone={status.tone} dot>{status.text}</Badge>
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <div className="flex justify-end gap-1">
+                        <IconButton icon={Printer} label="In lại phiếu STT" size="sm" onClick={() => printTicketOnly(p)} />
+                        <IconButton icon={Edit2} label="Sửa thông tin" size="sm" tone="primary" onClick={() => setEditingPatient(p)} />
+                        <IconButton icon={Trash2} label="Xóa bệnh nhân" size="sm" tone="danger" onClick={() => handleDeletePatient(p)} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {paginatedPatients.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="p-0">
+                    <EmptyState icon={Users} title="Không có bệnh nhân nào" />
                   </td>
                 </tr>
-              );
-            })}
-            {paginatedPatients.length === 0 && (
-              <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-400">
-                  Không có bệnh nhân nào
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between border-t pt-4">
-            <div className="text-sm text-gray-500">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4 shrink-0">
+            <div className="text-sm text-slate-500">
               Trang {currentPage} / {totalPages} ({filteredPatients.length} bệnh nhân)
             </div>
-            <div className="flex gap-2">
-              <button
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                icon={ChevronLeft}
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 border rounded-lg flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
               >
-                <ChevronLeft size={16} /> Trước
-              </button>
+                Trước
+              </Button>
 
               {/* Page numbers */}
               <div className="flex gap-1">
@@ -311,284 +289,274 @@ export const Reception: React.FC = () => {
                     pageNum = currentPage - 2 + i;
                   }
                   return (
-                    <button
+                    <Button
                       key={pageNum}
+                      size="sm"
+                      variant={currentPage === pageNum ? 'primary' : 'ghost'}
+                      className="w-8 px-0 tabular-nums"
+                      aria-current={currentPage === pageNum ? 'page' : undefined}
                       onClick={() => setCurrentPage(pageNum)}
-                      className={`w-8 h-8 rounded-lg font-medium ${currentPage === pageNum
-                        ? 'bg-brand-600 text-white'
-                        : 'border hover:bg-gray-50'
-                        }`}
                     >
                       {pageNum}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
 
-              <button
+              <Button
+                variant="outline"
+                size="sm"
+                icon={ChevronRight}
+                iconPosition="right"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1.5 border rounded-lg flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
               >
-                Sau <ChevronRight size={16} />
-              </button>
+                Sau
+              </Button>
             </div>
           </div>
         )}
-        </div>
       </Card>
 
       {/* New Patient Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-card border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-fade-in-up">
-            <div className="p-5 border-b border-slate-100 bg-brand-50 flex justify-between flex-shrink-0">
-              <h3 className="text-lg font-bold text-brand-800">Thêm bệnh nhân mới</h3>
-              <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer">
-                <X size={20} />
-              </button>
+      <Modal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="Thêm bệnh nhân mới"
+        icon={<UserPlus size={20} aria-hidden />}
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowForm(false)}>Hủy</Button>
+            <Button icon={Printer} onClick={handleSubmit}>Thêm & In Phiếu</Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Họ và tên" required htmlFor="new-fullName" className="sm:col-span-2">
+            <input
+              id="new-fullName"
+              value={formData.fullName}
+              onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+              className="clinic-input"
+              placeholder="Nhập họ và tên"
+            />
+          </Field>
+          <Field label="Năm sinh" htmlFor="new-dob">
+            <input
+              id="new-dob"
+              type="number"
+              value={formData.dob}
+              onChange={e => setFormData({ ...formData, dob: parseInt(e.target.value) })}
+              className="clinic-input"
+            />
+          </Field>
+          <Field label="Giới tính" htmlFor="new-gender">
+            <select
+              id="new-gender"
+              value={formData.gender}
+              onChange={e => setFormData({ ...formData, gender: e.target.value as any })}
+              className="clinic-input"
+            >
+              <option value="Nam">Nam</option>
+              <option value="Nữ">Nữ</option>
+            </select>
+          </Field>
+          <Field label="Số điện thoại" htmlFor="new-phone">
+            <input
+              id="new-phone"
+              value={formData.phone}
+              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              className="clinic-input"
+            />
+          </Field>
+          <Field label="Địa chỉ" htmlFor="new-address" className="sm:col-span-2">
+            <input
+              id="new-address"
+              value={formData.address}
+              onChange={e => setFormData({ ...formData, address: e.target.value })}
+              className="clinic-input"
+            />
+          </Field>
+
+          <div className="sm:col-span-2 subtle-panel p-4 space-y-4">
+            <h4 className="section-title">Thông tin ban đầu</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Thị lực (MP - OD)" htmlFor="new-va-od">
+                <input
+                  id="new-va-od"
+                  value={formData.initialVA?.od}
+                  onChange={e => setFormData({ ...formData, initialVA: { ...formData.initialVA!, od: e.target.value } })}
+                  className="clinic-input" placeholder="VD: 10/10"
+                />
+              </Field>
+              <Field label="Thị lực (MT - OS)" htmlFor="new-va-os">
+                <input
+                  id="new-va-os"
+                  value={formData.initialVA?.os}
+                  onChange={e => setFormData({ ...formData, initialVA: { ...formData.initialVA!, os: e.target.value } })}
+                  className="clinic-input" placeholder="VD: 5/10"
+                />
+              </Field>
             </div>
-            <div className="p-6 grid grid-cols-2 gap-4 overflow-y-auto flex-1">
-              <div className="col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Họ và tên *</label>
+            <label htmlFor="hasGlasses" className="flex items-center gap-2 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                id="hasGlasses"
+                checked={formData.hasGlasses}
+                onChange={e => setFormData({ ...formData, hasGlasses: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 accent-brand-600 cursor-pointer"
+              />
+              <span className="text-sm font-medium text-slate-700">Bệnh nhân đang đeo kính?</span>
+            </label>
+          </div>
+
+          <div className="sm:col-span-2">
+            <span className="clinic-label">Loại dịch vụ<span className="text-red-500 ml-0.5">*</span></span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className={`p-3 border rounded-xl cursor-pointer text-center transition-colors duration-150 ${serviceType === 'refraction'
+                ? 'border-brand-500 bg-brand-50 text-brand-700 ring-1 ring-brand-500'
+                : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                }`}>
                 <input
-                  value={formData.fullName}
-                  onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                  className="clinic-input"
-                  placeholder="Nhập họ và tên"
+                  type="radio"
+                  name="serviceType"
+                  value="refraction"
+                  checked={serviceType === 'refraction'}
+                  onChange={() => setServiceType('refraction')}
+                  className="hidden"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Năm sinh</label>
+                <div className="font-semibold">Cắt kính</div>
+                <div className="text-xs text-slate-500">Chuyển đến phòng Khúc xạ</div>
+              </label>
+              <label className={`p-3 border rounded-xl cursor-pointer text-center transition-colors duration-150 ${serviceType === 'doctor'
+                ? 'border-brand-500 bg-brand-50 text-brand-700 ring-1 ring-brand-500'
+                : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                }`}>
                 <input
+                  type="radio"
+                  name="serviceType"
+                  value="doctor"
+                  checked={serviceType === 'doctor'}
+                  onChange={() => setServiceType('doctor')}
+                  className="hidden"
+                />
+                <div className="font-semibold">Khám mắt</div>
+                <div className="text-xs text-slate-500">Chuyển đến phòng Bác sĩ</div>
+              </label>
+            </div>
+          </div>
+          <Field label="Lý do chi tiết / Triệu chứng" htmlFor="new-reason" className="sm:col-span-2">
+            <input
+              id="new-reason"
+              value={formData.reason}
+              onChange={e => setFormData({ ...formData, reason: e.target.value })}
+              className="clinic-input"
+              placeholder="Đau mắt, mờ, cộm, thay kính mới..."
+            />
+          </Field>
+          <Field label="Ghi chú" htmlFor="new-notes" className="sm:col-span-2">
+            <textarea
+              id="new-notes"
+              value={formData.notes}
+              onChange={e => setFormData({ ...formData, notes: e.target.value })}
+              className="clinic-input h-20 resize-y" rows={2}
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      {/* Edit Patient Modal */}
+      <Modal
+        open={!!editingPatient}
+        onClose={() => setEditingPatient(null)}
+        title="Sửa thông tin bệnh nhân"
+        icon={<Edit2 size={20} aria-hidden />}
+        size="md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditingPatient(null)}>Hủy</Button>
+            <Button onClick={handleUpdatePatient}>Lưu thay đổi</Button>
+          </>
+        }
+      >
+        {editingPatient && (
+          <div className="space-y-4">
+            <Field label="Họ và tên" required htmlFor="edit-fullName">
+              <input
+                id="edit-fullName"
+                className="clinic-input"
+                value={editingPatient.fullName}
+                onChange={e => setEditingPatient({ ...editingPatient, fullName: e.target.value })}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Năm sinh" htmlFor="edit-dob">
+                <input
+                  id="edit-dob"
                   type="number"
-                  value={formData.dob}
-                  onChange={e => setFormData({ ...formData, dob: parseInt(e.target.value) })}
-                  className="w-full border rounded p-2"
+                  className="clinic-input"
+                  value={editingPatient.dob}
+                  onChange={e => setEditingPatient({ ...editingPatient, dob: parseInt(e.target.value) })}
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Giới tính</label>
+              </Field>
+              <Field label="Giới tính" htmlFor="edit-gender">
                 <select
-                  value={formData.gender}
-                  onChange={e => setFormData({ ...formData, gender: e.target.value as any })}
-                  className="w-full border rounded p-2"
+                  id="edit-gender"
+                  className="clinic-input"
+                  value={editingPatient.gender}
+                  onChange={e => setEditingPatient({ ...editingPatient, gender: e.target.value as any })}
                 >
                   <option value="Nam">Nam</option>
                   <option value="Nữ">Nữ</option>
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Số điện thoại</label>
-                <input
-                  value={formData.phone}
-                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full border rounded p-2"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium mb-1">Địa chỉ</label>
-                <input
-                  value={formData.address}
-                  onChange={e => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full border rounded p-2"
-                />
-              </div>
-
-              <div className="col-span-2 border-t pt-4 mt-2">
-                <h4 className="font-bold text-gray-700 mb-2">Thông tin ban đầu</h4>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Thị lực (MP - OD)</label>
-                <input
-                  value={formData.initialVA?.od}
-                  onChange={e => setFormData({ ...formData, initialVA: { ...formData.initialVA!, od: e.target.value } })}
-                  className="w-full border rounded p-2" placeholder="VD: 10/10"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Thị lực (MT - OS)</label>
-                <input
-                  value={formData.initialVA?.os}
-                  onChange={e => setFormData({ ...formData, initialVA: { ...formData.initialVA!, os: e.target.value } })}
-                  className="w-full border rounded p-2" placeholder="VD: 5/10"
-                />
-              </div>
-
-              <div className="col-span-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="hasGlasses"
-                  checked={formData.hasGlasses}
-                  onChange={e => setFormData({ ...formData, hasGlasses: e.target.checked })}
-                  className="h-4 w-4"
-                />
-                <label htmlFor="hasGlasses" className="text-sm font-medium">Bệnh nhân đang đeo kính?</label>
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium mb-2">Loại dịch vụ *</label>
-                <div className="flex gap-3">
-                  <label className={`flex-1 p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${serviceType === 'refraction'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 hover:border-gray-300'
-                    }`}>
-                    <input
-                      type="radio"
-                      name="serviceType"
-                      value="refraction"
-                      checked={serviceType === 'refraction'}
-                      onChange={() => setServiceType('refraction')}
-                      className="hidden"
-                    />
-                    <div className="font-bold">Cắt kính</div>
-                    <div className="text-xs text-gray-500">Chuyển đến phòng Khúc xạ</div>
-                  </label>
-                  <label className={`flex-1 p-3 border-2 rounded-lg cursor-pointer text-center transition-all ${serviceType === 'doctor'
-                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                    : 'border-gray-200 hover:border-gray-300'
-                    }`}>
-                    <input
-                      type="radio"
-                      name="serviceType"
-                      value="doctor"
-                      checked={serviceType === 'doctor'}
-                      onChange={() => setServiceType('doctor')}
-                      className="hidden"
-                    />
-                    <div className="font-bold">Khám mắt</div>
-                    <div className="text-xs text-gray-500">Chuyển đến phòng Bác sĩ</div>
-                  </label>
-                </div>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium mb-1">Lý do chi tiết / Triệu chứng</label>
-                <input
-                  value={formData.reason}
-                  onChange={e => setFormData({ ...formData, reason: e.target.value })}
-                  className="w-full border rounded p-2"
-                  placeholder="Đau mắt, mờ, cộm, thay kính mới..."
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium mb-1">Ghi chu</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full border rounded p-2 h-16" rows={2}
-                />
-              </div>
+              </Field>
             </div>
-            <div className="p-4 border-t flex justify-end gap-3 bg-gray-50 flex-shrink-0">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-gray-600 font-medium">Hủy</button>
-              <button
-                onClick={handleSubmit}
-                className="px-6 py-2 bg-brand-600 text-white font-bold rounded shadow hover:bg-brand-700"
-              >
-                Thêm & In Phiếu
-              </button>
+            <Field label="Số điện thoại" htmlFor="edit-phone">
+              <input
+                id="edit-phone"
+                className="clinic-input"
+                value={editingPatient.phone}
+                onChange={e => setEditingPatient({ ...editingPatient, phone: e.target.value })}
+              />
+            </Field>
+            <Field label="Địa chỉ" htmlFor="edit-address">
+              <input
+                id="edit-address"
+                className="clinic-input"
+                value={editingPatient.address}
+                onChange={e => setEditingPatient({ ...editingPatient, address: e.target.value })}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Thị lực OD" htmlFor="edit-va-od">
+                <input
+                  id="edit-va-od"
+                  className="clinic-input"
+                  value={editingPatient.initialVA?.od || ''}
+                  onChange={e => setEditingPatient({ ...editingPatient, initialVA: { ...editingPatient.initialVA!, od: e.target.value } })}
+                />
+              </Field>
+              <Field label="Thị lực OS" htmlFor="edit-va-os">
+                <input
+                  id="edit-va-os"
+                  className="clinic-input"
+                  value={editingPatient.initialVA?.os || ''}
+                  onChange={e => setEditingPatient({ ...editingPatient, initialVA: { ...editingPatient.initialVA!, os: e.target.value } })}
+                />
+              </Field>
             </div>
+            <Field label="Lý do khám" htmlFor="edit-reason">
+              <input
+                id="edit-reason"
+                className="clinic-input"
+                value={editingPatient.reason}
+                onChange={e => setEditingPatient({ ...editingPatient, reason: e.target.value })}
+              />
+            </Field>
           </div>
-        </div>
-      )}
-
-      {/* Edit Patient Modal */}
-      {editingPatient && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-4 border-b bg-yellow-50 flex justify-between flex-shrink-0">
-              <h3 className="text-xl font-bold text-yellow-800">Sửa thông tin bệnh nhân</h3>
-              <button onClick={() => setEditingPatient(null)} className="text-gray-500 hover:text-red-500 text-2xl">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              <div>
-                <label className="block text-sm font-medium mb-1">Họ và tên *</label>
-                <input
-                  className="w-full border rounded p-2"
-                  value={editingPatient.fullName}
-                  onChange={e => setEditingPatient({ ...editingPatient, fullName: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Năm sinh</label>
-                  <input
-                    type="number"
-                    className="w-full border rounded p-2"
-                    value={editingPatient.dob}
-                    onChange={e => setEditingPatient({ ...editingPatient, dob: parseInt(e.target.value) })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Giới tính</label>
-                  <select
-                    className="w-full border rounded p-2"
-                    value={editingPatient.gender}
-                    onChange={e => setEditingPatient({ ...editingPatient, gender: e.target.value as any })}
-                  >
-                    <option value="Nam">Nam</option>
-                    <option value="Nữ">Nữ</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Số điện thoại</label>
-                <input
-                  className="w-full border rounded p-2"
-                  value={editingPatient.phone}
-                  onChange={e => setEditingPatient({ ...editingPatient, phone: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Địa chỉ</label>
-                <input
-                  className="w-full border rounded p-2"
-                  value={editingPatient.address}
-                  onChange={e => setEditingPatient({ ...editingPatient, address: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Thi luc OD</label>
-                  <input
-                    className="w-full border rounded p-2"
-                    value={editingPatient.initialVA?.od || ''}
-                    onChange={e => setEditingPatient({ ...editingPatient, initialVA: { ...editingPatient.initialVA!, od: e.target.value } })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Thi luc OS</label>
-                  <input
-                    className="w-full border rounded p-2"
-                    value={editingPatient.initialVA?.os || ''}
-                    onChange={e => setEditingPatient({ ...editingPatient, initialVA: { ...editingPatient.initialVA!, os: e.target.value } })}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Lý do khám</label>
-                <input
-                  className="w-full border rounded p-2"
-                  value={editingPatient.reason}
-                  onChange={e => setEditingPatient({ ...editingPatient, reason: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="p-4 border-t flex justify-end gap-3 bg-gray-50 flex-shrink-0">
-              <button onClick={() => setEditingPatient(null)} className="px-4 py-2 text-gray-600 font-medium">Hủy</button>
-              <button
-                onClick={handleUpdatePatient}
-                className="px-6 py-2 bg-yellow-500 text-white font-bold rounded shadow hover:bg-yellow-600"
-              >
-                Lưu thay đổi
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Hidden Print Area - Thermal Ticket 57mm x 50mm */}
       <div className="print-area">

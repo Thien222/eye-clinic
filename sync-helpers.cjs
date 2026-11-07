@@ -1,22 +1,29 @@
 function mergeSyncMeta(local, remote) {
-    const l = local || { version: 0, lastUpdated: 0, deletedPatientIds: [] };
-    const r = remote || { version: 0, lastUpdated: 0, deletedPatientIds: [] };
+    const l = local || { version: 0, lastUpdated: 0, deletedPatientIds: [], deletedInvoiceIds: [] };
+    const r = remote || { version: 0, lastUpdated: 0, deletedPatientIds: [], deletedInvoiceIds: [] };
     return {
         version: Math.max(l.version || 0, r.version || 0),
         lastUpdated: Math.max(l.lastUpdated || 0, r.lastUpdated || 0),
         deletedPatientIds: Array.from(new Set([
             ...(l.deletedPatientIds || []),
             ...(r.deletedPatientIds || [])
+        ])).slice(-5000),
+        // Hóa đơn đã xóa — để máy khác không đồng bộ ngược lại
+        deletedInvoiceIds: Array.from(new Set([
+            ...(l.deletedInvoiceIds || []),
+            ...(r.deletedInvoiceIds || [])
         ])).slice(-5000)
     };
 }
 
 function applyTombstones(data) {
     const deleted = new Set((data.syncMeta && data.syncMeta.deletedPatientIds) || []);
-    if (deleted.size === 0) return data;
+    const deletedInv = new Set((data.syncMeta && data.syncMeta.deletedInvoiceIds) || []);
+    if (deleted.size === 0 && deletedInv.size === 0) return data;
     return {
         ...data,
-        patients: (data.patients || []).filter(p => !deleted.has(p.id))
+        patients: (data.patients || []).filter(p => !deleted.has(p.id)),
+        invoices: (data.invoices || []).filter(i => !deletedInv.has(i.id))
     };
 }
 
